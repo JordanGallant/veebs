@@ -1,0 +1,29 @@
+html,
+body {
+  max-width: 100vw;
+  overflow-x: hidden;
+  scrollbar-width: none;
+}
+
+body {
+  color: var(--clr-dark);
+  background:
+    radial-gradient(circle at 18% 16%, rgba(255, 255, 255, 0.34), transparent 43%),
+    radial-gradient(circle at 84% 84%, rgba(121, 100, 201, 0.18), transparent 50%),
+    var(--clr-light);
+}
+
+* {
+  box-sizing: border-box;
+  padding: 0;
+  margin: 0;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+button {
+  cursor: pointer;
+}

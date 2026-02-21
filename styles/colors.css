@@ -1,0 +1,11 @@
+:root {
+  --clr-dark: #0e0e0c;
+  --clr-light: #cac6e0;
+  --clr-panel-left: #cbc6dd;
+  --clr-panel-right: #d8d3e1;
+  --clr-accent: #7d59df;
+  --clr-accent-soft: #bfaef0;
+  --clr-surface: #dfdbe8;
+  --clr-surface-2: #d4d0dd;
+  --clr-ink-soft: rgba(14, 14, 12, 0.62);
+}
