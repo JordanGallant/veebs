@@ -1,14 +1,22 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import gsap from "gsap";
-import { CreditStep } from "./steps/CreditStep";
+import { AccountStep } from "./steps/AccountStep";
+import { SubscriptionStep } from "./steps/SubscriptionStep";
 import { ProfileStep } from "./steps/ProfileStep";
+import { SpendingLimitStep } from "./steps/SpendingLimitStep";
 import { GenerateStep } from "./steps/GenerateStep";
 
 export type SignUpData = {
-  // Credit
-  aiCredit: number;
+  // Account
+  fullName: string;
+  email: string;
+  password: string;
+  acceptedTerms: boolean;
+  accountCreated: boolean;
+  // Subscription
+  subscriptionPlan: "starter" | "pro" | "scale";
   spendingLimit: number;
   paymentConnected: boolean;
   // Profile
@@ -20,7 +28,12 @@ export type SignUpData = {
 };
 
 const INITIAL_DATA: SignUpData = {
-  aiCredit: 20,
+  fullName: "",
+  email: "",
+  password: "",
+  acceptedTerms: false,
+  accountCreated: false,
+  subscriptionPlan: "pro",
   spendingLimit: 100,
   paymentConnected: false,
   photo: null,
@@ -31,13 +44,16 @@ const INITIAL_DATA: SignUpData = {
 };
 
 const STEPS = [
-  { id: "credit", label: "Credits" },
-  { id: "profile", label: "Profile" },
+  { id: "account", label: "Sign Up" },
+  { id: "subscription", label: "Subscription" },
+  { id: "profile", label: "Build Twin" },
+  { id: "spending", label: "Spending Limit" },
   { id: "generate", label: "Generate" },
 ];
 
 export default function SignUpFlow() {
   const [currentStep, setCurrentStep] = useState(0);
+  const [isDashboardMode, setIsDashboardMode] = useState(false);
   const [data, setData] = useState<SignUpData>(INITIAL_DATA);
   const [direction, setDirection] = useState<"next" | "prev">("next");
   const contentRef = useRef<HTMLDivElement>(null);
@@ -59,6 +75,10 @@ export default function SignUpFlow() {
       setCurrentStep((prev) => prev - 1);
     }
   };
+
+  const handleDashboardReady = useCallback(() => {
+    setIsDashboardMode(true);
+  }, []);
 
   // Animate step transitions
   useEffect(() => {
@@ -93,13 +113,22 @@ export default function SignUpFlow() {
     switch (currentStep) {
       case 0:
         return (
-          <CreditStep
+          <AccountStep
             data={data}
             updateData={updateData}
             onNext={goToNext}
           />
         );
       case 1:
+        return (
+          <SubscriptionStep
+            data={data}
+            updateData={updateData}
+            onNext={goToNext}
+            onBack={goToPrev}
+          />
+        );
+      case 2:
         return (
           <ProfileStep
             data={data}
@@ -108,8 +137,23 @@ export default function SignUpFlow() {
             onBack={goToPrev}
           />
         );
-      case 2:
-        return <GenerateStep data={data} />;
+      case 3:
+        return (
+          <SpendingLimitStep
+            data={data}
+            updateData={updateData}
+            onNext={goToNext}
+            onBack={goToPrev}
+          />
+        );
+      case 4:
+        return (
+          <GenerateStep
+            data={data}
+            updateData={updateData}
+            onDashboardReady={handleDashboardReady}
+          />
+        );
       default:
         return null;
     }
@@ -118,27 +162,29 @@ export default function SignUpFlow() {
   return (
     <div className="signup-flow">
       {/* Progress Header */}
-      <header className="signup-header">
+      <header className={`signup-header ${isDashboardMode ? "dashboard-header" : ""}`}>
         <div className="logo">Cyber Twin</div>
-        <nav className="step-indicator">
-          {STEPS.map((step, index) => (
-            <div
-              key={step.id}
-              className={`step-dot ${
-                index === currentStep
-                  ? "active"
-                  : index < currentStep
-                  ? "completed"
-                  : ""
-              }`}
-            >
-              <span className="step-number">
-                {index < currentStep ? "✓" : index + 1}
-              </span>
-              <span className="step-label">{step.label}</span>
-            </div>
-          ))}
-        </nav>
+        {!isDashboardMode && (
+          <nav className="step-indicator">
+            {STEPS.map((step, index) => (
+              <div
+                key={step.id}
+                className={`step-dot ${
+                  index === currentStep
+                    ? "active"
+                    : index < currentStep
+                    ? "completed"
+                    : ""
+                }`}
+              >
+                <span className="step-number">
+                  {index < currentStep ? "✓" : index + 1}
+                </span>
+                <span className="step-label">{step.label}</span>
+              </div>
+            ))}
+          </nav>
+        )}
       </header>
 
       {/* Main Content */}

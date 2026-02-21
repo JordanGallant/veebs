@@ -115,7 +115,7 @@ export function ProfileStep({
   return (
     <div className="profile-step">
       <div className="step-header">
-        <h1>Create Your Profile</h1>
+        <h1>Build Your Twin</h1>
         <p className="subtitle">
           Upload your photo, record your voice, and set your twin&apos;s personality.
         </p>
@@ -287,7 +287,7 @@ export function ProfileStep({
           Back
         </button>
         <button className="btn-primary" onClick={onNext} disabled={!canProceed}>
-          Generate Twin
+          Continue to Spending Limit
           <svg viewBox="0 0 24 24" aria-hidden="true">
             <path d="M8.59 16.59 13.17 12 8.59 7.41 10 6l6 6-6 6-1.41-1.41Z" />
           </svg>
