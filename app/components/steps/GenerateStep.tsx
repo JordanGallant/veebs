@@ -8,6 +8,7 @@ interface GenerateStepProps {
   data: SignUpData;
   updateData: (updates: Partial<SignUpData>) => void;
   onDashboardReady: () => void;
+  skipGeneration?: boolean;
 }
 
 type DashboardSection =
@@ -38,15 +39,21 @@ export function GenerateStep({
   data,
   updateData,
   onDashboardReady,
+  skipGeneration = false,
 }: GenerateStepProps) {
-  const [currentStep, setCurrentStep] = useState(0);
-  const [isComplete, setIsComplete] = useState(false);
+  const [currentStep, setCurrentStep] = useState(
+    skipGeneration ? GENERATION_STEPS.length - 1 : 0
+  );
+  const [isComplete, setIsComplete] = useState(skipGeneration);
   const [openSection, setOpenSection] = useState<DashboardSection | null>("plan");
   const containerRef = useRef<HTMLDivElement>(null);
   const twinRef = useRef<HTMLDivElement>(null);
   const photoInputRef = useRef<HTMLInputElement>(null);
+  const hasNotifiedDashboardRef = useRef(false);
 
   useEffect(() => {
+    if (skipGeneration) return;
+
     const intervals: NodeJS.Timeout[] = [];
 
     GENERATION_STEPS.forEach((_, index) => {
@@ -63,12 +70,15 @@ export function GenerateStep({
     });
 
     return () => intervals.forEach(clearTimeout);
-  }, []);
+  }, [skipGeneration]);
 
   useEffect(() => {
     if (!isComplete || !twinRef.current) return;
 
-    onDashboardReady();
+    if (!hasNotifiedDashboardRef.current) {
+      onDashboardReady();
+      hasNotifiedDashboardRef.current = true;
+    }
 
     const ctx = gsap.context(() => {
       gsap.fromTo(

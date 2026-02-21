@@ -8,6 +8,11 @@ import { ProfileStep } from "./steps/ProfileStep";
 import { SpendingLimitStep } from "./steps/SpendingLimitStep";
 import { GenerateStep } from "./steps/GenerateStep";
 
+interface SignUpFlowProps {
+  startAtDashboard?: boolean;
+  initialData?: Partial<SignUpData>;
+}
+
 export type SignUpData = {
   // Account
   fullName: string;
@@ -51,10 +56,16 @@ const STEPS = [
   { id: "generate", label: "Generate" },
 ];
 
-export default function SignUpFlow() {
-  const [currentStep, setCurrentStep] = useState(0);
-  const [isDashboardMode, setIsDashboardMode] = useState(false);
-  const [data, setData] = useState<SignUpData>(INITIAL_DATA);
+export default function SignUpFlow({
+  startAtDashboard = false,
+  initialData,
+}: SignUpFlowProps) {
+  const [currentStep, setCurrentStep] = useState(startAtDashboard ? 4 : 0);
+  const [isDashboardMode, setIsDashboardMode] = useState(startAtDashboard);
+  const [data, setData] = useState<SignUpData>({
+    ...INITIAL_DATA,
+    ...initialData,
+  });
   const [direction, setDirection] = useState<"next" | "prev">("next");
   const contentRef = useRef<HTMLDivElement>(null);
 
@@ -152,6 +163,7 @@ export default function SignUpFlow() {
             data={data}
             updateData={updateData}
             onDashboardReady={handleDashboardReady}
+            skipGeneration={startAtDashboard}
           />
         );
       default:
