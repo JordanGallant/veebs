@@ -77,6 +77,12 @@
   margin-bottom: 0.95rem;
 }
 
+.prominent-logo {
+  font-size: clamp(4rem, 10vw, 6rem);
+  margin-bottom: 1.5rem;
+  display: block;
+}
+
 .hero-subtitle {
   font-size: clamp(0.98rem, 1.4vw, 1.18rem);
   color: var(--clr-ink-soft);
@@ -157,8 +163,9 @@
 }
 
 .pricing-card.featured {
-  border: 1px solid rgba(125, 89, 223, 0.58);
-  background: rgba(255, 255, 255, 0.55);
+  transform: scale(1.05);
+  z-index: 2;
+  filter: drop-shadow(0 8px 24px rgba(125, 89, 223, 0.4));
 }
 
 .price {

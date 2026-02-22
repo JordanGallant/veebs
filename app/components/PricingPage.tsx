@@ -5,7 +5,6 @@ interface PricingPageProps {
   onSignUp: () => void;
 }
 
-import SpikyPanel from "./SpikyPanel";
 
 const PRICING_PLANS = [
   {
@@ -43,31 +42,30 @@ export default function PricingPage({ onBack, onSignUp }: PricingPageProps) {
   return (
     <div className="landing-page pricing-page">
       <header className="landing-header">
-        <div className="logo">Cyber Twin</div>
+        <div className="cyber-logo">Cyber Twin</div>
         <div className="landing-header-actions">
-          <button className="landing-link secondary" onClick={onBack}>
+          <button className="landing-text-link" onClick={onBack}>
             Back
           </button>
-          <button className="landing-link" onClick={onSignUp}>
+          <button className="landing-text-link" onClick={onSignUp}>
             Create account
           </button>
         </div>
       </header>
 
       <main className="landing-main">
-        <SpikyPanel elementType="section" className="landing-hero pricing-hero">
+        <section className="landing-hero pricing-hero">
           <p className="eyebrow">Pricing</p>
           <h1>Simple plans that scale with your twin.</h1>
           <p className="hero-subtitle">
             All plans include twin setup, dashboard controls, and WhatsApp
             access. Upgrade anytime as your usage grows.
           </p>
-        </SpikyPanel>
+        </section>
 
         <section className="pricing-grid">
           {PRICING_PLANS.map((plan) => (
-            <SpikyPanel
-              elementType="article"
+            <article
               key={plan.id}
               className={`pricing-card ${plan.featured ? "featured" : ""}`}
             >
@@ -85,7 +83,7 @@ export default function PricingPage({ onBack, onSignUp }: PricingPageProps) {
               <button className="btn-primary btn-wide" onClick={onSignUp}>
                 Choose {plan.name}
               </button>
-            </SpikyPanel>
+            </article>
           ))}
         </section>
       </main>

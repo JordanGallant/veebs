@@ -175,19 +175,18 @@ export default function SignUpFlow({
     <div className="signup-flow">
       {/* Progress Header */}
       <header className={`signup-header ${isDashboardMode ? "dashboard-header" : ""}`}>
-        <div className="logo">Cyber Twin</div>
+        <div className="cyber-logo">Cyber Twin</div>
         {!isDashboardMode && (
           <nav className="step-indicator">
             {STEPS.map((step, index) => (
               <div
                 key={step.id}
-                className={`step-dot ${
-                  index === currentStep
+                className={`step-dot ${index === currentStep
                     ? "active"
                     : index < currentStep
-                    ? "completed"
-                    : ""
-                }`}
+                      ? "completed"
+                      : ""
+                  }`}
               >
                 <span className="step-number">
                   {index < currentStep ? "✓" : index + 1}

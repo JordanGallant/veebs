@@ -25,13 +25,6 @@
   justify-content: flex-start;
 }
 
-.logo {
-  font-family: var(--apple-garamond), serif;
-  font-size: 1.75rem;
-  font-weight: 700;
-  color: var(--clr-dark);
-  letter-spacing: -0.02em;
-}
 
 .step-indicator {
   display: flex;
@@ -93,7 +86,7 @@
   .step-dot .step-label {
     display: none;
   }
-  
+
   .step-dot {
     padding: 0.25rem;
   }
@@ -796,9 +789,12 @@
 }
 
 @keyframes pulse {
-  0%, 100% {
+
+  0%,
+  100% {
     box-shadow: 0 4px 20px rgba(220, 38, 38, 0.38);
   }
+
   50% {
     box-shadow: 0 4px 40px rgba(220, 38, 38, 0.52);
   }
@@ -837,8 +833,15 @@
 }
 
 @keyframes blink {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.3; }
+
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.3;
+  }
 }
 
 .recording-hint {
@@ -1240,6 +1243,7 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
+
   .accordion-content,
   .accordion-caret {
     transition: none;

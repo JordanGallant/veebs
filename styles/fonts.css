@@ -9,6 +9,7 @@ h4,
 h5,
 h6 {
   font-family: var(--apple-garamond), serif;
+  font-weight: normal;
   line-height: 95%;
   margin: 0;
 }
