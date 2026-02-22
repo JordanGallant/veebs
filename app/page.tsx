@@ -16,10 +16,6 @@ export default function Home() {
       <LandingPage
         onSignUp={() => setView("signup")}
         onPricing={() => setView("pricing")}
-        onLogin={(seedData) => {
-          setDashboardSeed(seedData);
-          setView("dashboard");
-        }}
       />
     );
   }

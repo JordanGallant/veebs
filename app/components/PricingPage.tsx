@@ -5,6 +5,8 @@ interface PricingPageProps {
   onSignUp: () => void;
 }
 
+import SpikyPanel from "./SpikyPanel";
+
 const PRICING_PLANS = [
   {
     id: "starter",
@@ -53,20 +55,21 @@ export default function PricingPage({ onBack, onSignUp }: PricingPageProps) {
       </header>
 
       <main className="landing-main">
-        <section className="landing-hero glass-panel pricing-hero">
+        <SpikyPanel elementType="section" className="landing-hero pricing-hero">
           <p className="eyebrow">Pricing</p>
           <h1>Simple plans that scale with your twin.</h1>
           <p className="hero-subtitle">
             All plans include twin setup, dashboard controls, and WhatsApp
             access. Upgrade anytime as your usage grows.
           </p>
-        </section>
+        </SpikyPanel>
 
         <section className="pricing-grid">
           {PRICING_PLANS.map((plan) => (
-            <article
+            <SpikyPanel
+              elementType="article"
               key={plan.id}
-              className={`pricing-card glass-panel ${plan.featured ? "featured" : ""}`}
+              className={`pricing-card ${plan.featured ? "featured" : ""}`}
             >
               <h2>{plan.name}</h2>
               <p className="price">
@@ -82,7 +85,7 @@ export default function PricingPage({ onBack, onSignUp }: PricingPageProps) {
               <button className="btn-primary btn-wide" onClick={onSignUp}>
                 Choose {plan.name}
               </button>
-            </article>
+            </SpikyPanel>
           ))}
         </section>
       </main>

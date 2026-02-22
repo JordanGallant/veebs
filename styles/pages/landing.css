@@ -24,22 +24,22 @@
   gap: 0.55rem;
 }
 
-.landing-link {
-  border: 1px solid rgba(125, 89, 223, 0.3);
-  background: rgba(255, 255, 255, 0.38);
-  color: var(--clr-accent);
-  border-radius: 999px;
+.landing-text-link {
+  background: none;
+  border: none;
+  color: var(--clr-ink-soft);
   font-family: var(--mono), monospace;
-  font-size: 0.82rem;
-  font-weight: 600;
-  letter-spacing: 0.03em;
+  font-size: 0.85rem;
+  font-weight: 500;
   text-transform: uppercase;
-  padding: 0.6rem 1rem;
+  letter-spacing: 0.03em;
+  cursor: pointer;
+  padding: 0.5rem;
+  transition: color 0.15s ease;
 }
 
-.landing-link.secondary {
+.landing-text-link:hover {
   color: var(--clr-dark);
-  border-color: rgba(125, 89, 223, 0.18);
 }
 
 .landing-main {
@@ -47,17 +47,6 @@
   margin: 0 auto;
   display: grid;
   gap: 1.2rem;
-}
-
-.glass-panel {
-  border-radius: 26px;
-  border: 1px solid rgba(255, 255, 255, 0.6);
-  background: rgba(255, 255, 255, 0.4);
-  backdrop-filter: blur(10px);
-}
-
-.landing-hero {
-  padding: clamp(1.2rem, 3vw, 2.2rem);
 }
 
 .landing-hero-split {
@@ -127,38 +116,20 @@
   object-fit: contain;
 }
 
-.entry-grid {
-  display: grid;
-  grid-template-columns: 1.2fr 0.9fr;
-  gap: 1rem;
+.hero-cta {
+  margin-top: 1.5rem;
 }
 
-.entry-card {
-  padding: clamp(1rem, 2.5vw, 1.4rem);
-  display: grid;
-  gap: 0.8rem;
+.start-btn {
+  font-size: 1.25rem;
+  padding: 1rem 3rem;
+  box-shadow: 0 4px 20px rgba(125, 89, 223, 0.3);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
 }
 
-.entry-card h2 {
-  font-size: 1.45rem;
-}
-
-.entry-card p {
-  color: var(--clr-ink-soft);
-  font-size: 0.94rem;
-  margin-bottom: 0.2rem;
-}
-
-.btn-wide {
-  width: 100%;
-}
-
-.login-card .btn-primary {
-  margin-top: 0.45rem;
-}
-
-.signup-card-landing {
-  align-content: start;
+.start-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 24px rgba(125, 89, 223, 0.45);
 }
 
 .pricing-page .landing-main {
@@ -171,12 +142,11 @@
 
 .pricing-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
   gap: 1rem;
 }
 
-.pricing-card {
-  padding: 1.2rem;
+.pricing-card>.spiky-panel-content {
   display: grid;
   gap: 0.75rem;
   align-content: start;
@@ -254,9 +224,7 @@
     max-height: none;
   }
 
-  .entry-grid {
-    grid-template-columns: 1fr;
-  }
+
 
   .pricing-grid {
     grid-template-columns: 1fr;
@@ -266,7 +234,7 @@
     gap: 0.35rem;
   }
 
-  .landing-link {
+  .landing-text-link {
     padding: 0.55rem 0.85rem;
     font-size: 0.74rem;
   }
