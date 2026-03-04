@@ -1,0 +1,466 @@
+:root {
+  --color-bg: #0a0a0a;
+  --color-fg: #a38ced;
+  --color-bg-rgb: 10, 10, 10;
+  /* Keep in sync with --color-fg (R, G, B) */
+  --color-fg-rgb: 163, 140, 237;
+  --font: 'IBM Plex Mono', monospace;
+  --font-normal: 400;
+  --font-bold: 700;
+  --radius: 4px;
+  --space-xs: 4px;
+  --space-sm: 8px;
+  --space-md: 16px;
+  --space-lg: 32px;
+  --space-xl: 64px;
+  --text-sm: 13px;
+  --text-md: 16px;
+  --text-lg: 20px;
+  --text-xl: 28px;
+}
+
+*, *::before, *::after {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html, body {
+  height: 100%;
+  background: var(--color-bg);
+  color: var(--color-fg);
+  font-family: var(--font);
+  font-weight: var(--font-normal);
+  font-size: var(--text-md);
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+#app {
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+a {
+  color: var(--color-fg);
+  text-decoration: underline;
+}
+
+/* --- Buttons --- */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-sm);
+  background: var(--color-fg);
+  color: var(--color-bg);
+  border: none;
+  border-radius: var(--radius);
+  font-family: var(--font);
+  font-weight: var(--font-bold);
+  font-size: var(--text-md);
+  padding: var(--space-sm) var(--space-md);
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+
+.btn:hover {
+  opacity: 0.85;
+}
+
+.btn:focus-visible {
+  outline: 2px solid var(--color-fg);
+  outline-offset: 2px;
+}
+
+.btn:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+.btn--secondary {
+  background: transparent;
+  color: var(--color-fg);
+  border: 1px solid rgba(var(--color-fg-rgb), 0.3);
+}
+
+.btn--danger {
+  background: transparent;
+  color: var(--color-fg);
+  border: 1px solid rgba(var(--color-fg-rgb), 0.3);
+  opacity: 0.6;
+}
+
+/* --- Inputs --- */
+
+.input {
+  background: transparent;
+  color: var(--color-fg);
+  border: 1px solid rgba(var(--color-fg-rgb), 0.2);
+  border-radius: var(--radius);
+  font-family: var(--font);
+  font-weight: var(--font-normal);
+  font-size: var(--text-md);
+  padding: var(--space-sm) var(--space-md);
+  width: 100%;
+  transition: border-color 0.15s;
+}
+
+.input:focus {
+  outline: none;
+  border-color: var(--color-fg);
+}
+
+.input::placeholder {
+  color: rgba(var(--color-fg-rgb), 0.3);
+}
+
+/* --- Typography --- */
+
+.text-sm { font-size: var(--text-sm); }
+.text-md { font-size: var(--text-md); }
+.text-lg { font-size: var(--text-lg); }
+.text-xl { font-size: var(--text-xl); }
+.bold { font-weight: var(--font-bold); }
+.secondary { opacity: 0.5; }
+.muted { opacity: 0.3; }
+
+/* --- Layout --- */
+
+.screen {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-lg);
+  text-align: center;
+  gap: var(--space-md);
+}
+
+.screen--top {
+  justify-content: flex-start;
+  text-align: left;
+  align-items: stretch;
+}
+
+/* --- Dividers --- */
+
+.divider {
+  border: none;
+  border-top: 1px solid rgba(var(--color-fg-rgb), 0.1);
+  width: 100%;
+}
+
+/* --- Tabs --- */
+
+.tabs {
+  display: flex;
+  gap: 0;
+  border-bottom: 1px solid rgba(var(--color-fg-rgb), 0.1);
+}
+
+.tab {
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--color-fg);
+  opacity: 0.5;
+  font-family: var(--font);
+  font-weight: var(--font-normal);
+  font-size: var(--text-sm);
+  padding: var(--space-sm) var(--space-md);
+  cursor: pointer;
+  transition: opacity 0.15s, border-color 0.15s;
+}
+
+.tab:hover {
+  opacity: 0.75;
+}
+
+.tab--active {
+  opacity: 1;
+  font-weight: var(--font-bold);
+  border-bottom-color: var(--color-fg);
+}
+
+.tab:focus-visible {
+  outline: 2px solid var(--color-fg);
+  outline-offset: -2px;
+}
+
+/* --- Error --- */
+
+.error {
+  border: 1px solid rgba(var(--color-fg-rgb), 0.3);
+  border-radius: var(--radius);
+  padding: var(--space-sm) var(--space-md);
+  font-size: var(--text-sm);
+  opacity: 0.8;
+}
+
+/* --- ASCII camera --- */
+
+.ascii-viewport {
+  font-size: 6px;
+  line-height: 6px;
+  letter-spacing: 1px;
+  white-space: pre;
+  overflow: hidden;
+  border: 1px solid rgba(var(--color-fg-rgb), 0.15);
+  border-radius: var(--radius);
+  padding: var(--space-sm);
+  max-width: 100%;
+}
+
+@media (min-width: 640px) {
+  .ascii-viewport {
+    font-size: 8px;
+    line-height: 8px;
+  }
+}
+
+/* --- Chat --- */
+
+.chat-log {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+  padding: var(--space-md) 0;
+}
+
+.chat-msg {
+  max-width: 80%;
+  padding: var(--space-sm) var(--space-md);
+  border-radius: var(--radius);
+  font-size: var(--text-sm);
+  word-wrap: break-word;
+}
+
+.chat-msg--user {
+  align-self: flex-end;
+  background: var(--color-fg);
+  color: var(--color-bg);
+}
+
+.chat-msg--twin {
+  align-self: flex-start;
+  border: 1px solid rgba(var(--color-fg-rgb), 0.2);
+}
+
+.chat-input-row {
+  display: flex;
+  gap: var(--space-sm);
+}
+
+.chat-input-row .input {
+  flex: 1;
+}
+
+/* --- Character traits --- */
+
+.trait-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
+  padding: var(--space-sm) 0;
+}
+
+.trait-row label {
+  flex: 0 0 120px;
+  font-size: var(--text-sm);
+}
+
+.trait-row input[type="range"] {
+  flex: 1;
+  accent-color: var(--color-fg);
+  height: 4px;
+}
+
+.trait-row .trait-value {
+  flex: 0 0 36px;
+  text-align: right;
+  font-size: var(--text-sm);
+  opacity: 0.5;
+}
+
+/* --- Wallet --- */
+
+.wallet-balance {
+  font-size: var(--text-xl);
+  font-weight: var(--font-bold);
+  padding: var(--space-lg) 0 var(--space-md);
+}
+
+.tx-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+}
+
+.tx-item {
+  display: flex;
+  justify-content: space-between;
+  font-size: var(--text-sm);
+  padding: var(--space-xs) 0;
+  border-bottom: 1px solid rgba(var(--color-fg-rgb), 0.05);
+}
+
+/* --- Inline editable --- */
+
+.editable-name {
+  background: none;
+  border: none;
+  border-bottom: 1px solid rgba(var(--color-fg-rgb), 0.2);
+  color: var(--color-fg);
+  font-family: var(--font);
+  font-weight: var(--font-bold);
+  font-size: var(--text-xl);
+  padding: var(--space-xs) 0;
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+.editable-name:focus {
+  border-bottom-color: var(--color-fg);
+}
+
+/* --- Recording controls --- */
+
+.rec-controls {
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
+}
+
+.rec-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--color-fg);
+  animation: pulse 1s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+
+.rec-timer {
+  font-size: var(--text-sm);
+  font-weight: var(--font-bold);
+  opacity: 0.7;
+}
+
+/* --- WhatsApp QR --- */
+
+.qr-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-md);
+  padding: var(--space-lg) 0;
+}
+
+.qr-container canvas {
+  border: 1px solid rgba(var(--color-fg-rgb), 0.15);
+  border-radius: var(--radius);
+}
+
+/* --- Loading / Birthing --- */
+
+.birthing-ascii {
+  font-size: 10px;
+  line-height: 12px;
+  letter-spacing: 2px;
+  white-space: pre;
+  text-align: center;
+}
+
+.birthing-status {
+  font-size: var(--text-sm);
+  opacity: 0.5;
+  min-height: 1.5em;
+}
+
+/* --- Dashboard layout --- */
+
+.dashboard {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  max-width: 640px;
+  width: 100%;
+  margin: 0 auto;
+  padding: var(--space-lg) var(--space-md);
+  gap: var(--space-md);
+}
+
+.dashboard-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
+}
+
+.tab-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+/* --- Connection status --- */
+
+.status-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-right: var(--space-xs);
+}
+
+.status-dot--off {
+  border: 1px solid rgba(var(--color-fg-rgb), 0.3);
+}
+
+.status-dot--on {
+  background: var(--color-fg);
+}
+
+/* --- Deposit form --- */
+
+.deposit-form {
+  display: flex;
+  gap: var(--space-sm);
+  align-items: flex-end;
+}
+
+.deposit-form .input {
+  flex: 1;
+}
+
+/* --- Responsive --- */
+
+@media (max-width: 480px) {
+  .screen {
+    padding: var(--space-md);
+  }
+
+  .dashboard {
+    padding: var(--space-md) var(--space-sm);
+  }
+
+  .ascii-viewport {
+    font-size: 5px;
+    line-height: 5px;
+    letter-spacing: 0.5px;
+  }
+
+  .trait-row label {
+    flex: 0 0 80px;
+  }
+}
