@@ -1,0 +1,350 @@
+/* ========================================
+   LIQUID GLASS - COMPONENT SYSTEM
+   ======================================== */
+
+/* ========================================
+   GLASS CONTAINER
+   Frosted glass with inner refraction
+   ======================================== */
+
+.glass {
+  position: relative;
+  background: var(--glass-bg);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--glass-border);
+  box-shadow: 
+    var(--shadow-lg),
+    inset 0 1px 1px var(--glass-border-inner);
+}
+
+.glass::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1px;
+  background: linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.4) 0%,
+    rgba(255, 255, 255, 0.05) 50%,
+    rgba(255, 255, 255, 0.1) 100%
+  );
+  mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  mask-composite: exclude;
+  -webkit-mask-composite: xor;
+  pointer-events: none;
+}
+
+.glass--sm {
+  border-radius: var(--radius-md);
+  box-shadow: 
+    var(--shadow-md),
+    inset 0 1px 1px var(--glass-border-inner);
+}
+
+.glass--lg {
+  border-radius: var(--radius-xl);
+  box-shadow: 
+    var(--shadow-xl),
+    inset 0 1px 1px var(--glass-border-inner);
+}
+
+.glass--dark {
+  background: var(--glass-bg-dark);
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
+/* Container padding utilities */
+.glass-container {
+  composes: glass;
+  padding: 2rem;
+}
+
+.glass-container--sm {
+  composes: glass--sm;
+  padding: 1rem;
+}
+
+.glass-container--lg {
+  composes: glass--lg;
+  padding: 3rem;
+}
+
+/* ========================================
+   LIQUID BUTTON
+   Spring physics hover states
+   ======================================== */
+
+.liquid-button {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.875rem 1.75rem;
+  font-size: 0.9375rem;
+  font-weight: 500;
+  line-height: 1;
+  font-family: var(--font-sans), system-ui, sans-serif;
+  border-radius: var(--radius-md);
+  background: var(--color-fg);
+  color: var(--color-bg);
+  cursor: pointer;
+  border: none;
+  overflow: hidden;
+  transition: 
+    transform var(--duration-normal) var(--ease-spring),
+    box-shadow var(--duration-normal) var(--ease-smooth);
+  will-change: transform;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.liquid-button::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.15) 0%,
+    transparent 100%
+  );
+  opacity: 0;
+  transition: opacity var(--duration-fast) var(--ease-smooth);
+}
+
+.liquid-button:hover {
+  transform: translateY(-2px) scale(1.02);
+  box-shadow: var(--shadow-lg);
+}
+
+.liquid-button:hover::before {
+  opacity: 1;
+}
+
+.liquid-button:active {
+  transform: translateY(0) scale(0.98);
+  transition-duration: var(--duration-fast);
+}
+
+.liquid-button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
+.liquid-button:disabled::before {
+  display: none;
+}
+
+/* Button Variants */
+
+.liquid-button--sm {
+  padding: 0.625rem 1.25rem;
+  font-size: 0.875rem;
+  border-radius: var(--radius-sm);
+}
+
+.liquid-button--lg {
+  padding: 1.125rem 2.25rem;
+  font-size: 1rem;
+  border-radius: var(--radius-lg);
+}
+
+.liquid-button--accent {
+  background: var(--color-accent);
+  box-shadow: 
+    0 4px 14px 0 rgba(37, 99, 235, 0.39),
+    inset 0 1px 1px rgba(255, 255, 255, 0.2);
+}
+
+.liquid-button--accent:hover {
+  background: var(--color-accent-hover);
+  box-shadow: 
+    0 6px 20px 0 rgba(37, 99, 235, 0.23),
+    var(--shadow-lg);
+}
+
+.liquid-button--ghost {
+  background: transparent;
+  color: var(--color-fg);
+  border: 1px solid var(--zinc-200);
+}
+
+.liquid-button--ghost:hover {
+  background: var(--zinc-100);
+  border-color: var(--zinc-300);
+}
+
+.liquid-button--glass {
+  background: var(--glass-bg);
+  color: var(--color-fg);
+  border: 1px solid var(--glass-border);
+  backdrop-filter: blur(10px);
+}
+
+.liquid-button--glass:hover {
+  background: rgba(255, 255, 255, 0.9);
+  border-color: rgba(255, 255, 255, 0.7);
+}
+
+/* ========================================
+   LIQUID INPUT
+   Submerged glass aesthetic
+   ======================================== */
+
+.liquid-input {
+  width: 100%;
+  padding: 0.875rem 1.125rem;
+  font-size: 0.9375rem;
+  font-family: var(--font-sans), system-ui, sans-serif;
+  background: var(--zinc-100);
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  color: var(--color-fg);
+  transition: 
+    background var(--duration-fast) var(--ease-smooth),
+    border-color var(--duration-fast) var(--ease-smooth),
+    box-shadow var(--duration-fast) var(--ease-smooth),
+    transform var(--duration-fast) var(--ease-spring);
+  outline: none;
+}
+
+.liquid-input::placeholder {
+  color: var(--zinc-400);
+}
+
+.liquid-input:hover {
+  background: var(--zinc-50);
+  border-color: var(--zinc-200);
+}
+
+.liquid-input:focus {
+  background: var(--color-bg);
+  border-color: var(--color-accent);
+  box-shadow: 
+    0 0 0 3px var(--color-accent-light),
+    var(--shadow-sm);
+  transform: translateY(-1px);
+}
+
+.liquid-input--glass {
+  background: var(--glass-bg);
+  border-color: var(--glass-border);
+  backdrop-filter: blur(10px);
+}
+
+.liquid-input--glass:hover {
+  background: rgba(255, 255, 255, 0.85);
+}
+
+.liquid-input--glass:focus {
+  background: rgba(255, 255, 255, 0.95);
+}
+
+/* ========================================
+   LIQUID CARD
+   Elevated glass surface
+   ======================================== */
+
+.liquid-card {
+  position: relative;
+  background: var(--color-bg);
+  border-radius: var(--radius-xl);
+  border: 1px solid var(--zinc-200);
+  overflow: hidden;
+  transition: 
+    transform var(--duration-normal) var(--ease-spring),
+    box-shadow var(--duration-normal) var(--ease-smooth);
+  will-change: transform;
+}
+
+.liquid-card:hover {
+  transform: translateY(-4px);
+  box-shadow: var(--shadow-xl);
+}
+
+.liquid-card--glass {
+  composes: glass;
+  border-color: var(--glass-border);
+}
+
+.liquid-card--flat {
+  border-color: var(--zinc-200);
+  box-shadow: none;
+}
+
+.liquid-card--flat:hover {
+  border-color: var(--zinc-300);
+  box-shadow: var(--shadow-md);
+  transform: translateY(-2px);
+}
+
+/* ========================================
+   LIQUID BADGE
+   Subtle status indicators
+   ======================================== */
+
+.liquid-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.375rem 0.875rem;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  font-family: var(--font-sans), system-ui, sans-serif;
+  border-radius: var(--radius-full);
+  background: var(--zinc-100);
+  color: var(--zinc-700);
+  border: 1px solid var(--zinc-200);
+  transition: 
+    background var(--duration-fast) var(--ease-smooth),
+    transform var(--duration-fast) var(--ease-spring);
+}
+
+.liquid-badge--accent {
+  background: var(--color-accent-light);
+  color: var(--color-accent);
+  border-color: rgba(37, 99, 235, 0.2);
+}
+
+.liquid-badge--glass {
+  background: var(--glass-bg);
+  backdrop-filter: blur(8px);
+  border-color: var(--glass-border);
+}
+
+/* ========================================
+   UTILITY CLASSES
+   ======================================== */
+
+/* Hardware acceleration */
+.gpu-accelerated {
+  transform: translateZ(0);
+  will-change: transform;
+  backface-visibility: hidden;
+}
+
+/* Focus ring */
+.focus-ring:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--color-accent-light);
+}
+
+/* Text gradient */
+.text-gradient {
+  background: linear-gradient(135deg, var(--color-fg) 0%, var(--zinc-600) 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.text-gradient-accent {
+  background: linear-gradient(135deg, var(--color-accent) 0%, #60a5fa 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
