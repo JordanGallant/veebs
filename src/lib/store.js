@@ -5,13 +5,8 @@ export const store = {
   name: 'Unnamed Twin',
   photoBlob: null,
   audioBlob: null,
-  traits: {
-    Creativity: 65,
-    Humor: 50,
-    Formality: 40,
-    Energy: 70,
-    Empathy: 75,
-  },
+  characterProfile:
+    'My twin is calm, thoughtful, and quietly optimistic. They listen first, then answer with clear and practical guidance in plain English. They enjoy creative work such as writing concepts, naming ideas, and shaping rough plans into concrete next steps. They are reliable with routine duties like organizing tasks, drafting follow-up messages, and keeping priorities visible. Their tone is warm and direct, with light humor when the moment allows it, but they always stay respectful and focused on helping me move forward.',
   balance: 0,
   transactions: [],
   messages: [],

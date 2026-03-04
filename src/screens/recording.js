@@ -30,7 +30,6 @@ function render(container) {
   }
 
   cam = createAsciiCamera();
-  cam.start(stream);
 
   const prompt = el(
     'p',
@@ -100,15 +99,15 @@ function render(container) {
     navigate('birthing');
   });
 
+  const content = el('div', { class: 'recording-content' }, prompt, controls, errorBox, createBtn);
+
   const wrapper = el(
     'div',
-    { class: 'screen' },
+    { class: 'screen recording-screen' },
     cam.el,
-    prompt,
-    controls,
-    errorBox,
-    createBtn,
+    content,
   );
 
   container.appendChild(wrapper);
+  cam.start(stream);
 }

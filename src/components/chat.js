@@ -61,26 +61,36 @@ export function createChat(parent) {
 
 function generateReply(userMsg) {
   const lower = userMsg.toLowerCase();
-  const traits = store.traits;
+  const profile = (store.characterProfile || '').trim();
 
   if (lower.includes('name')) {
     return `My name is ${store.name}. Nice to formally introduce myself!`;
   }
   if (lower.includes('hobby') || lower.includes('hobbies')) {
-    return traits.Creativity > 60
-      ? "I love creative pursuits! Maybe we could brainstorm something together?"
-      : "I'm more of a practical thinker. What tasks can I tackle for you?";
+    return pickProfileSentence(profile, ['enjoy', 'hobby', 'creative', 'writing', 'idea'])
+      || 'I enjoy a mix of creative and practical work. Tell me what you want to focus on first.';
   }
   if (lower.includes('help') || lower.includes('task') || lower.includes('duty')) {
-    return traits.Energy > 60
-      ? "I'm full of energy and ready to take things on! Just say the word."
-      : "I'll pace myself but I'll get it done. What do you need?";
+    return pickProfileSentence(profile, ['help', 'task', 'duty', 'organizing', 'routine', 'guidance'])
+      || 'I can help with planning, organizing, and turning rough ideas into next steps.';
   }
   if (lower.includes('how are you') || lower.includes('feeling')) {
-    return traits.Humor > 60
-      ? "Running at peak performance -- which for a digital twin means I haven't crashed yet!"
-      : "I'm operational and ready to assist.";
+    return pickProfileSentence(profile, ['calm', 'optimistic', 'warm', 'tone', 'humor'])
+      || "I'm calm, focused, and ready to help.";
   }
 
   return MOCK_REPLIES[Math.floor(Math.random() * MOCK_REPLIES.length)];
+}
+
+function pickProfileSentence(profile, keywords) {
+  if (!profile) return '';
+  const sentences = profile
+    .split(/(?<=[.!?])\s+/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+  const match = sentences.find((sentence) => {
+    const lower = sentence.toLowerCase();
+    return keywords.some((keyword) => lower.includes(keyword));
+  });
+  return match || sentences[0] || '';
 }

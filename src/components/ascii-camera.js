@@ -1,6 +1,4 @@
-const CHARS = ' .:@CYBERTWIN';
-const COLS = 80;
-const ROWS = 40;
+const CHARS = " .'`^\" ,:;Il!i~+_-?][}{1)(|/tfjrxnuvczXYUJCLQ0OZmwqpdbkhao*#MW&8%B@$";
 
 export function createAsciiCamera() {
   const pre = document.createElement('pre');
@@ -11,25 +9,36 @@ export function createAsciiCamera() {
   video.muted = true;
 
   const canvas = document.createElement('canvas');
-  canvas.width = COLS;
-  canvas.height = ROWS;
   const ctx = canvas.getContext('2d', { willReadFrequently: true });
 
-  const snapCanvas = document.createElement('canvas');
+  let cols = 80, rows = 40;
+  let rafId = 0, running = false;
 
-  let rafId = 0;
-  let running = false;
+  function resize() {
+    const rect = pre.getBoundingClientRect();
+    if (!rect.width || !rect.height) return;
+
+    const style = window.getComputedStyle(pre);
+    const fontSize = parseFloat(style.fontSize) || 10;
+    const charW = fontSize * 0.6;
+    const lineH = fontSize * 1.2;
+
+    cols = Math.floor(rect.width / charW);
+    rows = Math.floor(rect.height / lineH);
+    canvas.width = cols;
+    canvas.height = rows;
+  }
 
   function draw() {
     if (!running) return;
 
-    ctx.drawImage(video, 0, 0, COLS, ROWS);
-    const { data } = ctx.getImageData(0, 0, COLS, ROWS);
+    ctx.drawImage(video, 0, 0, cols, rows);
+    const { data } = ctx.getImageData(0, 0, cols, rows);
 
     let ascii = '';
-    for (let y = 0; y < ROWS; y++) {
-      for (let x = 0; x < COLS; x++) {
-        const i = (y * COLS + x) * 4;
+    for (let y = 0; y < rows; y++) {
+      for (let x = 0; x < cols; x++) {
+        const i = (y * cols + x) * 4;
         const brightness = (data[i] + data[i + 1] + data[i + 2]) / 3;
         const charIdx = Math.floor((brightness / 255) * (CHARS.length - 1));
         ascii += CHARS[charIdx];
@@ -47,6 +56,8 @@ export function createAsciiCamera() {
     start(stream) {
       video.srcObject = stream;
       video.play();
+      resize();
+      window.addEventListener('resize', resize);
       running = true;
       rafId = requestAnimationFrame(draw);
     },
@@ -54,26 +65,17 @@ export function createAsciiCamera() {
     stop() {
       running = false;
       cancelAnimationFrame(rafId);
+      window.removeEventListener('resize', resize);
       video.pause();
       video.srcObject = null;
     },
 
     snapshot() {
-      return new Promise((resolve) => {
-        if (!video.videoWidth) {
-          resolve(null);
-          return;
-        }
-        snapCanvas.width = video.videoWidth;
-        snapCanvas.height = video.videoHeight;
-        const snapCtx = snapCanvas.getContext('2d');
-        snapCtx.drawImage(video, 0, 0);
-        snapCanvas.toBlob(
-          (b) => resolve(b),
-          'image/jpeg',
-          0.85,
-        );
-      });
-    },
+      const snap = document.createElement('canvas');
+      snap.width = video.videoWidth || 640;
+      snap.height = video.videoHeight || 480;
+      snap.getContext('2d').drawImage(video, 0, 0);
+      return new Promise(r => snap.toBlob(b => r(b), 'image/jpeg', 0.85));
+    }
   };
 }

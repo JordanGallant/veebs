@@ -1,39 +1,25 @@
 import { el, on } from '../lib/dom.js';
 import { store, notify } from '../lib/store.js';
 
-const TRAIT_NAMES = ['Creativity', 'Humor', 'Formality', 'Energy', 'Empathy'];
-
 export function createCharacter(parent) {
   const heading = el('p', { class: 'secondary text-sm', style: 'padding-bottom:var(--space-sm)' },
-    'Adjust the personality traits of your twin.',
+    'Describe your twin in natural English. This text guides how your twin behaves.',
   );
 
-  const wrapper = el('div', { class: 'tab-content', style: 'gap:var(--space-xs)' }, heading);
+  const label = el('label', { for: 'character-profile', class: 'text-sm secondary' }, 'Character profile');
+  const editor = document.createElement('textarea');
+  editor.id = 'character-profile';
+  editor.className = 'input character-profile';
+  editor.rows = 9;
+  editor.value = store.characterProfile;
+  editor.setAttribute('aria-label', 'Character profile text');
 
-  for (const name of TRAIT_NAMES) {
-    const value = store.traits[name] ?? 50;
+  on(editor, 'input', () => {
+    store.characterProfile = editor.value;
+    notify();
+  });
 
-    const label = el('label', { for: `trait-${name}` }, name);
-
-    const range = document.createElement('input');
-    range.type = 'range';
-    range.id = `trait-${name}`;
-    range.min = '0';
-    range.max = '100';
-    range.value = String(value);
-
-    const valueDisplay = el('span', { class: 'trait-value' }, String(value));
-
-    on(range, 'input', () => {
-      const v = parseInt(range.value, 10);
-      store.traits[name] = v;
-      valueDisplay.textContent = String(v);
-      notify();
-    });
-
-    const row = el('div', { class: 'trait-row' }, label, range, valueDisplay);
-    wrapper.appendChild(row);
-  }
+  const wrapper = el('div', { class: 'character-editor', style: 'display:flex;flex-direction:column;gap:var(--space-sm)' }, heading, label, editor);
 
   parent.appendChild(wrapper);
 }
