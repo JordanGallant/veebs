@@ -2,11 +2,11 @@ import { el, on } from '../lib/dom.js';
 import { navigate, registerScreen } from '../lib/router.js';
 import { store } from '../lib/store.js';
 
-export function registerWelcome(): void {
+export function registerWelcome() {
   registerScreen('welcome', { render });
 }
 
-function render(container: HTMLElement): void {
+function render(container) {
   const heading = el('h1', { class: 'text-xl bold' }, 'Extract Your DNA');
 
   const subtitle = el(

@@ -16,7 +16,7 @@ let frameTimer = 0;
 let msgTimer = 0;
 let navTimeout = 0;
 
-export function registerBirthing(): void {
+export function registerBirthing() {
   registerScreen('birthing', {
     render,
     cleanup() {
@@ -27,8 +27,8 @@ export function registerBirthing(): void {
   });
 }
 
-function buildHelixFrames(count: number): string[] {
-  const frames: string[] = [];
+function buildHelixFrames(count) {
+  const frames = [];
   const height = 16;
   const width = 40;
   const chars = '.:+*#@';
@@ -63,7 +63,7 @@ function buildHelixFrames(count: number): string[] {
   return frames;
 }
 
-function render(container: HTMLElement): void {
+function render(container) {
   const heading = el('h1', { class: 'text-xl bold' }, 'Birthing Your Twin...');
 
   const asciiPre = el('pre', { class: 'birthing-ascii' });

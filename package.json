@@ -1,12 +1,5 @@
 {
   "name": "cybertwin",
   "version": "1.0.0",
-  "private": true,
-  "scripts": {
-    "build": "tsc",
-    "watch": "tsc --watch"
-  },
-  "devDependencies": {
-    "typescript": "^5.7.0"
-  }
+  "private": true
 }

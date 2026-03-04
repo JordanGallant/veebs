@@ -1,5 +1,5 @@
 import { el, on, clear } from '../lib/dom.js';
-import { store, notify, type ChatMessage } from '../lib/store.js';
+import { store, notify } from '../lib/store.js';
 
 const MOCK_REPLIES = [
   "That's interesting! Tell me more about that.",
@@ -14,15 +14,15 @@ const MOCK_REPLIES = [
   "Consider it done -- well, virtually at least.",
 ];
 
-export function createChat(parent: HTMLElement): () => void {
+export function createChat(parent) {
   const log = el('div', { class: 'chat-log' });
-  const input = el('input', { class: 'input', type: 'text', placeholder: 'Type a message...' }) as HTMLInputElement;
+  const input = el('input', { class: 'input', type: 'text', placeholder: 'Type a message...' });
   const sendBtn = el('button', { class: 'btn' }, 'Send');
   const row = el('div', { class: 'chat-input-row' }, input, sendBtn);
   const wrapper = el('div', { class: 'tab-content' }, log, row);
   parent.appendChild(wrapper);
 
-  function renderMessages(): void {
+  function renderMessages() {
     clear(log);
     for (const msg of store.messages) {
       const cls = msg.role === 'user' ? 'chat-msg chat-msg--user' : 'chat-msg chat-msg--twin';
@@ -31,7 +31,7 @@ export function createChat(parent: HTMLElement): () => void {
     log.scrollTop = log.scrollHeight;
   }
 
-  function send(): void {
+  function send() {
     const text = input.value.trim();
     if (!text) return;
 
@@ -57,12 +57,9 @@ export function createChat(parent: HTMLElement): () => void {
   });
 
   renderMessages();
-
-  const unsub = () => {};
-  return unsub;
 }
 
-function generateReply(userMsg: string): string {
+function generateReply(userMsg) {
   const lower = userMsg.toLowerCase();
   const traits = store.traits;
 

@@ -6,30 +6,18 @@ import { createCharacter } from '../components/character.js';
 import { createWallet } from '../components/wallet.js';
 import { createWhatsAppQR } from '../components/whatsapp-qr.js';
 
-type Tab = 'chat' | 'character' | 'wallet' | 'whatsapp';
-
-const TAB_LABELS: Record<Tab, string> = {
+const TAB_LABELS = {
   chat: 'Chat',
   character: 'Character',
   wallet: 'Wallet',
   whatsapp: 'WhatsApp',
 };
 
-let cleanupTab: (() => void) | null = null;
-
-export function registerDashboard(): void {
-  registerScreen('dashboard', {
-    render,
-    cleanup() {
-      if (cleanupTab) {
-        cleanupTab();
-        cleanupTab = null;
-      }
-    },
-  });
+export function registerDashboard() {
+  registerScreen('dashboard', { render });
 }
 
-function render(container: HTMLElement): void {
+function render(container) {
   const nameInput = document.createElement('input');
   nameInput.type = 'text';
   nameInput.className = 'editable-name';
@@ -46,10 +34,10 @@ function render(container: HTMLElement): void {
   const tabBar = el('div', { class: 'tabs' });
   const tabContent = el('div', { class: 'tab-content' });
 
-  const tabs: Tab[] = ['chat', 'character', 'wallet', 'whatsapp'];
-  let activeTab: Tab = 'chat';
+  const tabs = ['chat', 'character', 'wallet', 'whatsapp'];
+  let activeTab = 'chat';
 
-  function renderTabs(): void {
+  function renderTabs() {
     clear(tabBar);
     for (const tab of tabs) {
       const btn = el('button', {
@@ -68,25 +56,21 @@ function render(container: HTMLElement): void {
     }
   }
 
-  function renderTabContent(): void {
-    if (cleanupTab) {
-      cleanupTab();
-      cleanupTab = null;
-    }
+  function renderTabContent() {
     clear(tabContent);
 
     switch (activeTab) {
       case 'chat':
-        cleanupTab = createChat(tabContent);
+        createChat(tabContent);
         break;
       case 'character':
-        cleanupTab = createCharacter(tabContent);
+        createCharacter(tabContent);
         break;
       case 'wallet':
-        cleanupTab = createWallet(tabContent);
+        createWallet(tabContent);
         break;
       case 'whatsapp':
-        cleanupTab = createWhatsAppQR(tabContent);
+        createWhatsAppQR(tabContent);
         break;
     }
   }

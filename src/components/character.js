@@ -3,7 +3,7 @@ import { store, notify } from '../lib/store.js';
 
 const TRAIT_NAMES = ['Creativity', 'Humor', 'Formality', 'Energy', 'Empathy'];
 
-export function createCharacter(parent: HTMLElement): () => void {
+export function createCharacter(parent) {
   const heading = el('p', { class: 'secondary text-sm', style: 'padding-bottom:var(--space-sm)' },
     'Adjust the personality traits of your twin.',
   );
@@ -36,6 +36,4 @@ export function createCharacter(parent: HTMLElement): () => void {
   }
 
   parent.appendChild(wrapper);
-
-  return () => {};
 }

@@ -1,28 +1,28 @@
 import { el, on } from '../lib/dom.js';
 import { navigate, registerScreen } from '../lib/router.js';
 import { store } from '../lib/store.js';
-import { createAsciiCamera, type AsciiCamera } from '../components/ascii-camera.js';
-import { createAudioRecorder, type AudioRecorder } from '../components/audio-recorder.js';
+import { createAsciiCamera } from '../components/ascii-camera.js';
+import { createAudioRecorder } from '../components/audio-recorder.js';
 
-let cam: AsciiCamera | null = null;
+let cam = null;
 
-export function registerRecording(): void {
+export function registerRecording() {
   registerScreen('recording', {
     render,
     cleanup() {
-      cam?.stop();
+      if (cam) cam.stop();
       cam = null;
     },
   });
 }
 
-function formatTime(seconds: number): string {
+function formatTime(seconds) {
   const m = Math.floor(seconds / 60).toString().padStart(2, '0');
   const s = (seconds % 60).toString().padStart(2, '0');
   return `${m}:${s}`;
 }
 
-function render(container: HTMLElement): void {
+function render(container) {
   const stream = store.mediaStream;
   if (!stream) {
     navigate('welcome');
@@ -42,19 +42,34 @@ function render(container: HTMLElement): void {
   const timerEl = el('span', { class: 'rec-timer' }, '00:00');
   const recBtn = el('button', { class: 'btn' }, 'Start Recording');
   const controls = el('div', { class: 'rec-controls' }, recDot, timerEl, recBtn);
+  const errorBox = el('p', { class: 'error', style: 'display:none' });
 
   const createBtn = el('button', { class: 'btn', style: 'display:none' }, 'Create Twin');
 
-  let recorder: AudioRecorder | null = null;
+  let recorder = null;
   let timerInterval = 0;
   let elapsed = 0;
 
   on(recBtn, 'click', async () => {
     if (!recorder || !recorder.isRecording()) {
+      errorBox.style.display = 'none';
       recorder = createAudioRecorder(stream);
-      recorder.start();
+      try {
+        recorder.start();
+      } catch {
+        recorder = null;
+        recDot.style.display = 'none';
+        recBtn.textContent = 'Start Recording';
+        createBtn.style.display = 'none';
+        clearInterval(timerInterval);
+        timerEl.textContent = '00:00';
+        errorBox.style.display = '';
+        errorBox.textContent =
+          'Recording could not start in this browser/device setup. Try refreshing, allowing microphone access, and closing other apps that might use the mic.';
+        return;
+      }
 
-      cam!.snapshot().then((blob) => {
+      cam.snapshot().then((blob) => {
         store.photoBlob = blob;
       });
 
@@ -80,7 +95,7 @@ function render(container: HTMLElement): void {
   });
 
   on(createBtn, 'click', () => {
-    cam?.stop();
+    if (cam) cam.stop();
     cam = null;
     navigate('birthing');
   });
@@ -91,6 +106,7 @@ function render(container: HTMLElement): void {
     cam.el,
     prompt,
     controls,
+    errorBox,
     createBtn,
   );
 

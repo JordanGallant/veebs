@@ -2,14 +2,7 @@ const CHARS = ' .:@CYBERTWIN';
 const COLS = 80;
 const ROWS = 40;
 
-export interface AsciiCamera {
-  el: HTMLPreElement;
-  start(stream: MediaStream): void;
-  stop(): void;
-  snapshot(): Promise<Blob | null>;
-}
-
-export function createAsciiCamera(): AsciiCamera {
+export function createAsciiCamera() {
   const pre = document.createElement('pre');
   pre.className = 'ascii-viewport';
 
@@ -20,14 +13,14 @@ export function createAsciiCamera(): AsciiCamera {
   const canvas = document.createElement('canvas');
   canvas.width = COLS;
   canvas.height = ROWS;
-  const ctx = canvas.getContext('2d', { willReadFrequently: true })!;
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
 
   const snapCanvas = document.createElement('canvas');
 
   let rafId = 0;
   let running = false;
 
-  function draw(): void {
+  function draw() {
     if (!running) return;
 
     ctx.drawImage(video, 0, 0, COLS, ROWS);
@@ -51,21 +44,21 @@ export function createAsciiCamera(): AsciiCamera {
   return {
     el: pre,
 
-    start(stream: MediaStream): void {
+    start(stream) {
       video.srcObject = stream;
       video.play();
       running = true;
       rafId = requestAnimationFrame(draw);
     },
 
-    stop(): void {
+    stop() {
       running = false;
       cancelAnimationFrame(rafId);
       video.pause();
       video.srcObject = null;
     },
 
-    snapshot(): Promise<Blob | null> {
+    snapshot() {
       return new Promise((resolve) => {
         if (!video.videoWidth) {
           resolve(null);
@@ -73,7 +66,7 @@ export function createAsciiCamera(): AsciiCamera {
         }
         snapCanvas.width = video.videoWidth;
         snapCanvas.height = video.videoHeight;
-        const snapCtx = snapCanvas.getContext('2d')!;
+        const snapCtx = snapCanvas.getContext('2d');
         snapCtx.drawImage(video, 0, 0);
         snapCanvas.toBlob(
           (b) => resolve(b),

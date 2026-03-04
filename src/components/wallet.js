@@ -1,7 +1,7 @@
 import { el, on, clear } from '../lib/dom.js';
 import { store, notify } from '../lib/store.js';
 
-export function createWallet(parent: HTMLElement): () => void {
+export function createWallet(parent) {
   const balanceEl = el('div', { class: 'wallet-balance' }, formatCurrency(store.balance));
 
   const amountLabel = el('label', { for: 'deposit-amount', class: 'text-sm' }, 'Deposit Amount');
@@ -12,7 +12,7 @@ export function createWallet(parent: HTMLElement): () => void {
     min: '0.01',
     step: '0.01',
     placeholder: '0.00',
-  }) as HTMLInputElement;
+  });
   const depositBtn = el('button', { class: 'btn' }, 'Deposit');
 
   const form = el('div', { class: 'deposit-form' },
@@ -24,7 +24,7 @@ export function createWallet(parent: HTMLElement): () => void {
   const txList = el('ul', { class: 'tx-list' });
   const emptyMsg = el('p', { class: 'secondary text-sm' }, 'No transactions yet.');
 
-  function renderTx(): void {
+  function renderTx() {
     clear(txList);
     if (store.transactions.length === 0) {
       txList.appendChild(emptyMsg);
@@ -66,10 +66,8 @@ export function createWallet(parent: HTMLElement): () => void {
 
   parent.appendChild(wrapper);
   renderTx();
-
-  return () => {};
 }
 
-function formatCurrency(n: number): string {
+function formatCurrency(n) {
   return `$${n.toFixed(2)}`;
 }

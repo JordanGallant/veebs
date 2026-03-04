@@ -1,7 +1,7 @@
 import { el } from '../lib/dom.js';
 import { getThemeColor } from '../lib/theme.js';
 
-export function createWhatsAppQR(parent: HTMLElement): () => void {
+export function createWhatsAppQR(parent) {
   const canvas = document.createElement('canvas');
   const size = 180;
   canvas.width = size;
@@ -24,12 +24,10 @@ export function createWhatsAppQR(parent: HTMLElement): () => void {
   );
 
   parent.appendChild(wrapper);
-
-  return () => {};
 }
 
-function drawMockQR(canvas: HTMLCanvasElement, bg: string, fg: string): void {
-  const ctx = canvas.getContext('2d')!;
+function drawMockQR(canvas, bg, fg) {
+  const ctx = canvas.getContext('2d');
   const size = canvas.width;
   const modules = 25;
   const cellSize = size / modules;
@@ -55,7 +53,7 @@ function drawMockQR(canvas: HTMLCanvasElement, bg: string, fg: string): void {
   }
 }
 
-function drawFinderPattern(ctx: CanvasRenderingContext2D, x: number, y: number, cell: number, bg: string, fg: string): void {
+function drawFinderPattern(ctx, x, y, cell, bg, fg) {
   ctx.fillStyle = fg;
   ctx.fillRect(x, y, 7 * cell, 7 * cell);
 
@@ -66,7 +64,7 @@ function drawFinderPattern(ctx: CanvasRenderingContext2D, x: number, y: number, 
   ctx.fillRect(x + 2 * cell, y + 2 * cell, 3 * cell, 3 * cell);
 }
 
-function isFinderArea(x: number, y: number, modules: number): boolean {
+function isFinderArea(x, y, modules) {
   if (x < 8 && y < 8) return true;
   if (x >= modules - 8 && y < 8) return true;
   if (x < 8 && y >= modules - 8) return true;

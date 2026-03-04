@@ -1,11 +1,4 @@
-type Attrs = Record<string, string>;
-type Child = HTMLElement | string;
-
-export function el(
-  tag: string,
-  attrs?: Attrs | null,
-  ...children: Child[]
-): HTMLElement {
+export function el(tag, attrs, ...children) {
   const element = document.createElement(tag);
   if (attrs) {
     for (const [key, value] of Object.entries(attrs)) {
@@ -14,7 +7,7 @@ export function el(
       } else if (key === 'class') {
         element.className = value;
       } else if (key === 'for') {
-        (element as HTMLLabelElement).htmlFor = value;
+        element.setAttribute('for', value);
       } else {
         element.setAttribute(key, value);
       }
@@ -30,18 +23,10 @@ export function el(
   return element;
 }
 
-export function on<K extends keyof HTMLElementEventMap>(
-  element: HTMLElement,
-  event: K,
-  handler: (e: HTMLElementEventMap[K]) => void,
-): void {
+export function on(element, event, handler) {
   element.addEventListener(event, handler);
 }
 
-export function clear(element: HTMLElement): void {
+export function clear(element) {
   element.innerHTML = '';
-}
-
-export function $(selector: string, parent: HTMLElement | Document = document): HTMLElement | null {
-  return parent.querySelector(selector);
 }
