@@ -1,26 +1,38 @@
 const CHARS = '　。一丨二十人三大双中丰内仿电机芯网体码数智械脑像镜链隆螺赛博器';
+const CHARS_IDX = new Map();
+for (let i = 0; i < CHARS.length; i++) CHARS_IDX.set(CHARS[i], i);
 const HELIX_CHARS = '　。一人机芯智脑镜螺';
 const LUMA_BLEND = 0.48;
 const LUMA_GAMMA = 0.78;
 const DIFF_TRACK_ROWS = 5;
-const RAIN_TRAIL = 5;
-const RAIN_MOTION_MIN = 12;
-const MAX_DROPS = 220;
-const MAX_SPAWNS = 16;
+const RAIN_TRAIL_MIN = 4;
+const RAIN_TRAIL_MAX = 9;
+const RAIN_MOTION_MIN = 10;
+const RAIN_SPEED_BASE = 0.22;
+const RAIN_SPEED_RANGE = 0.88;
+const MAX_DROPS = 750;
+const MAX_SPAWNS = 302;
 const SPAWN_CHANCE = 0.82;
+const WAVE_MAX_HEIGHT = 0.7;
+const WAVE_ATTACK = 0.45;
+const WAVE_RELEASE = 0.06;
+const WAVE_FREQ_1 = 0.09;
+const WAVE_FREQ_2 = 0.19;
+const WAVE_SPEED = 0.0024;
 const TRANSITION_MS = 1200;
+const PRINT_IN_MS = 920;
+const PRINT_BAND_ROWS = 6;
+const PRINT_SPARKLE = 0.42;
 const HELIX_COUNT = 24;
 const HELIX_STEP_MS = 100;
 const JITTER_CHANCE = 0.12;
 const BODY_STEP_MS = 82;
 const BODY_SAMPLES = 2;
 const BODY_MAX_STRETCH_DISTORTION = 1.35;
-const BODY_BG_ADAPT = 0.035;
-const BODY_BG_ADAPT_EDGE = 0.075;
-const BODY_BG_ADAPT_FG = 0.004;
-const BODY_MOTION_GATE = 7.5;
-const BODY_COLOR_GATE_MIN = 12;
-const BODY_VIDEO_URL = new URL('../../assets/rotating-human.mp4', import.meta.url).href;
+const BODY_BG_ABS_LUMA_CUTOFF = 18;
+const BODY_BG_REL_LUMA_CUTOFF = 0.16;
+const BODY_DETAIL_GAMMA = 0.72;
+const BODY_VIDEO_URL = new URL('../../assets/cybertwin.m4v', import.meta.url).href;
 
 function detectLightBg() {
   const div = document.createElement('div');
@@ -69,6 +81,13 @@ export function createAsciiCamera(opts = {}) {
 
   let drops = [];
 
+  let audioCtx = null;
+  let analyser = null;
+  let audioSource = null;
+  let audioData = null;
+  let smoothVolume = 0;
+  let waveOn = false;
+
   let frozen = null;
   let flipTimes = null;
   let transStart = 0;
@@ -82,12 +101,8 @@ export function createAsciiCamera(opts = {}) {
   let bodyFailed = false;
   let bodySampleW = 0;
   let bodySampleH = 0;
-  let bodyBgLuma = null;
-  let bodyBgR = null;
-  let bodyBgG = null;
-  let bodyBgB = null;
-  let bodyPrevLuma = null;
   let lastBodyT = 0;
+  let printInStart = 0;
 
   bodyVideo.addEventListener('error', () => {
     bodyFailed = true;
@@ -144,11 +159,6 @@ export function createAsciiCamera(opts = {}) {
     blankBodyBuf = null;
     bodySampleW = 0;
     bodySampleH = 0;
-    bodyBgLuma = null;
-    bodyBgR = null;
-    bodyBgG = null;
-    bodyBgB = null;
-    bodyPrevLuma = null;
     drops = drops.filter(d => d.x < cols && d.y < rainRows);
     invertLuma = detectLightBg();
   }
@@ -238,9 +248,6 @@ export function createAsciiCamera(opts = {}) {
 
     const { data } = bodyCtx.getImageData(0, 0, sampleW, sampleH);
     const n = cols * totalRows;
-    const rVals = new Float32Array(n);
-    const gVals = new Float32Array(n);
-    const bVals = new Float32Array(n);
     const luma = new Float32Array(n);
 
     let i = 0;
@@ -249,175 +256,46 @@ export function createAsciiCamera(opts = {}) {
       for (let x = 0; x < cols; x++) {
         const sx = x * BODY_SAMPLES;
 
-        let sumR = 0;
-        let sumG = 0;
-        let sumB = 0;
+        let sum = 0;
         for (let oy = 0; oy < BODY_SAMPLES; oy++) {
           const row = (sy + oy) * sampleW;
           for (let ox = 0; ox < BODY_SAMPLES; ox++) {
             const p = (row + sx + ox) * 4;
-            sumR += data[p];
-            sumG += data[p + 1];
-            sumB += data[p + 2];
+            sum += data[p] * 0.2126 + data[p + 1] * 0.7152 + data[p + 2] * 0.0722;
           }
         }
-        const div = BODY_SAMPLES * BODY_SAMPLES;
-        const r = sumR / div;
-        const g = sumG / div;
-        const b = sumB / div;
-        rVals[i] = r;
-        gVals[i] = g;
-        bVals[i] = b;
-        luma[i] = r * 0.2126 + g * 0.7152 + b * 0.0722;
+        luma[i] = sum / (BODY_SAMPLES * BODY_SAMPLES);
         i++;
       }
     }
 
-    if (!bodyBgLuma || bodyBgLuma.length !== n) {
-      bodyBgLuma = new Float32Array(luma);
-      bodyBgR = new Float32Array(rVals);
-      bodyBgG = new Float32Array(gVals);
-      bodyBgB = new Float32Array(bVals);
-      bodyPrevLuma = new Float32Array(luma);
-    }
-
-    let bgR = 0;
-    let bgG = 0;
-    let bgB = 0;
-    let bgCount = 0;
-    const edgeStepX = Math.max(1, Math.floor(cols / 16));
-    const edgeStepY = Math.max(1, Math.floor(totalRows / 16));
-    for (let x = 0; x < cols; x += edgeStepX) {
-      const top = x;
-      const bottom = (totalRows - 1) * cols + x;
-      bgR += rVals[top] + rVals[bottom];
-      bgG += gVals[top] + gVals[bottom];
-      bgB += bVals[top] + bVals[bottom];
-      bgCount += 2;
-    }
-    for (let y = 1; y < totalRows - 1; y += edgeStepY) {
-      const left = y * cols;
-      const right = left + (cols - 1);
-      bgR += rVals[left] + rVals[right];
-      bgG += gVals[left] + gVals[right];
-      bgB += bVals[left] + bVals[right];
-      bgCount += 2;
-    }
-    if (!bgCount) {
-      bgR = rVals[Math.floor(n / 2)];
-      bgG = gVals[Math.floor(n / 2)];
-      bgB = bVals[Math.floor(n / 2)];
-      bgCount = 1;
-    } else {
-      bgR /= bgCount;
-      bgG /= bgCount;
-      bgB /= bgCount;
-    }
-
-    let borderVar = 0;
-    for (let x = 0; x < cols; x += edgeStepX) {
-      const top = x;
-      const bottom = (totalRows - 1) * cols + x;
-      borderVar += Math.hypot(rVals[top] - bgR, gVals[top] - bgG, bVals[top] - bgB);
-      borderVar += Math.hypot(rVals[bottom] - bgR, gVals[bottom] - bgG, bVals[bottom] - bgB);
-    }
-    for (let y = 1; y < totalRows - 1; y += edgeStepY) {
-      const left = y * cols;
-      const right = left + (cols - 1);
-      borderVar += Math.hypot(rVals[left] - bgR, gVals[left] - bgG, bVals[left] - bgB);
-      borderVar += Math.hypot(rVals[right] - bgR, gVals[right] - bgG, bVals[right] - bgB);
-    }
-    borderVar /= bgCount;
-
-    const colorGate = Math.max(BODY_COLOR_GATE_MIN, borderVar * 2.25 + 6);
-    const colorGateSq = colorGate * colorGate;
-    const modelGateSq = (colorGate * 0.85) * (colorGate * 0.85);
-
-    const mask = new Uint8Array(n);
-    let fgMin = 255;
-    let fgMax = 0;
-    let fgCount = 0;
-
+    let lo = 255;
+    let hi = 0;
     for (let k = 0; k < n; k++) {
-      const y = Math.floor(k / cols);
-      const x = k - y * cols;
-      const r = rVals[k];
-      const g = gVals[k];
-      const b = bVals[k];
       const lum = luma[k];
-
-      const dr = r - bgR;
-      const dg = g - bgG;
-      const db = b - bgB;
-      const edgeDistSq = dr * dr + dg * dg + db * db;
-
-      const mr = r - bodyBgR[k];
-      const mg = g - bodyBgG[k];
-      const mb = b - bodyBgB[k];
-      const modelDistSq = mr * mr + mg * mg + mb * mb;
-
-      const modelMotion = Math.abs(lum - bodyBgLuma[k]);
-      const frameMotion = bodyPrevLuma ? Math.abs(lum - bodyPrevLuma[k]) : 0;
-
-      const isFg =
-        edgeDistSq > colorGateSq ||
-        modelDistSq > modelGateSq ||
-        modelMotion > BODY_MOTION_GATE ||
-        frameMotion > BODY_MOTION_GATE * 0.8;
-
-      if (isFg) {
-        mask[k] = 1;
-        fgCount++;
-        if (lum < fgMin) fgMin = lum;
-        if (lum > fgMax) fgMax = lum;
-      }
-
-      const edge = x === 0 || x === cols - 1 || y === 0 || y === totalRows - 1;
-      const alpha = isFg ? BODY_BG_ADAPT_FG : (edge ? BODY_BG_ADAPT_EDGE : BODY_BG_ADAPT);
-      bodyBgR[k] += (r - bodyBgR[k]) * alpha;
-      bodyBgG[k] += (g - bodyBgG[k]) * alpha;
-      bodyBgB[k] += (b - bodyBgB[k]) * alpha;
-      bodyBgLuma[k] += (lum - bodyBgLuma[k]) * alpha;
+      if (lum < lo) lo = lum;
+      if (lum > hi) hi = lum;
     }
-    if (bodyPrevLuma && bodyPrevLuma.length === n) bodyPrevLuma.set(luma);
 
-    if (!fgCount) return ensureBlankBody().slice();
-
-    const range = Math.max(1, fgMax - fgMin);
+    const range = Math.max(1, hi - lo);
+    const bgCutoff = Math.max(BODY_BG_ABS_LUMA_CUTOFF, lo + range * BODY_BG_REL_LUMA_CUTOFF);
+    const activeRange = Math.max(1, hi - bgCutoff);
     const cLast = CHARS.length - 1;
     const buf = new Array(n);
     for (let k = 0; k < n; k++) {
-      if (!mask[k]) {
+      const lum = luma[k];
+      if (lum <= bgCutoff) {
         buf[k] = CHARS[0];
         continue;
       }
-      let norm = (luma[k] - fgMin) / range;
-      norm = Math.pow(Math.min(1, Math.max(0, norm)), 0.68);
+      let norm = (lum - bgCutoff) / activeRange;
+      norm = Math.pow(Math.min(1, Math.max(0, norm)), BODY_DETAIL_GAMMA);
       let ci = Math.floor(norm * cLast);
-      if (ci < 1) ci = 1;
+      if (ci < 0) ci = 0;
       if (ci > cLast) ci = cLast;
       buf[k] = CHARS[ci];
     }
-
-    const cleaned = buf.slice();
-    const blank = CHARS[0];
-    for (let y = 1; y < totalRows - 1; y++) {
-      const row = y * cols;
-      for (let x = 1; x < cols - 1; x++) {
-        const idx = row + x;
-        if (buf[idx] === blank) continue;
-        let neighbors = 0;
-        for (let oy = -1; oy <= 1; oy++) {
-          for (let ox = -1; ox <= 1; ox++) {
-            if (!ox && !oy) continue;
-            if (buf[idx + oy * cols + ox] !== blank) neighbors++;
-          }
-        }
-        if (neighbors <= 2) cleaned[idx] = blank;
-      }
-    }
-
-    return cleaned;
+    return buf;
   }
 
   function flushBuf(buf) {
@@ -433,7 +311,7 @@ export function createAsciiCamera(opts = {}) {
 
   function draw(now) {
     if (!running) return;
-    if (phase === 'recording') drawRecording();
+    if (phase === 'recording') drawRecording(now);
     else if (phase === 'transition') drawTransition(now);
     else if (phase === 'helix') drawHelix(now);
     else if (phase === 'body') drawBody(now);
@@ -453,7 +331,53 @@ export function createAsciiCamera(opts = {}) {
     flushBuf(bodyBuf || ensureBlankBody());
   }
 
-  function drawRecording() {
+  function noise01(x, y, t) {
+    const n = Math.sin(x * 12.9898 + y * 78.233 + t * 0.021) * 43758.5453;
+    return n - Math.floor(n);
+  }
+
+  function applyPrintIn(buf, now) {
+    if (!printInStart) return buf;
+    const progress = Math.min(1, (now - printInStart) / PRINT_IN_MS);
+    if (progress >= 1) {
+      printInStart = 0;
+      return buf;
+    }
+
+    const n = cols * totalRows;
+    const out = new Array(n);
+    const cLast = CHARS.length - 1;
+    const noiseMin = Math.max(1, Math.floor(cLast * 0.45));
+    const scanY = progress * (totalRows + PRINT_BAND_ROWS) - PRINT_BAND_ROWS;
+    const t = now;
+
+    for (let y = 0; y < totalRows; y++) {
+      const depth = scanY - y;
+      const row = y * cols;
+      for (let x = 0; x < cols; x++) {
+        const idx = row + x;
+        if (depth >= PRINT_BAND_ROWS) {
+          out[idx] = buf[idx];
+          continue;
+        }
+        if (depth <= -1) {
+          out[idx] = CHARS[0];
+          continue;
+        }
+        const reveal = Math.min(1, Math.max(0, (depth + 1) / (PRINT_BAND_ROWS + 1)));
+        const z = noise01(x, y, t);
+        if (z < reveal * (1 - PRINT_SPARKLE)) {
+          out[idx] = buf[idx];
+        } else {
+          const ci = noiseMin + Math.floor(z * (cLast - noiseMin + 1));
+          out[idx] = CHARS[ci];
+        }
+      }
+    }
+    return out;
+  }
+
+  function drawRecording(now) {
     if (!cols || !camRows) return;
 
     if (mirror) {
@@ -520,7 +444,7 @@ export function createAsciiCamera(opts = {}) {
             const bufIdx = (camRows - tracked + Math.floor(i / cols)) * cols + x;
             const ch = buf[bufIdx];
             if (ch !== CHARS[0]) {
-              candidates.push({ ch, x });
+              candidates.push({ ch, x, delta: Math.abs(nextLumaBand[i] - prevBand[i]) });
             }
           }
         }
@@ -534,10 +458,15 @@ export function createAsciiCamera(opts = {}) {
         [candidates[i], candidates[j]] = [candidates[j], candidates[i]];
         if (Math.random() < SPAWN_CHANCE) {
           const c = candidates[i];
+          const delta01 = Math.min(1, c.delta / 80);
+          const speed = RAIN_SPEED_BASE + delta01 * RAIN_SPEED_RANGE;
+          const trail = RAIN_TRAIL_MIN + Math.round(delta01 * (RAIN_TRAIL_MAX - RAIN_TRAIL_MIN));
           drops.push({
-            char: c.ch, x: c.x,
-            y: -(RAIN_TRAIL - 1),
-            speed: 0.28 + Math.random() * 0.34,
+            ci: CHARS_IDX.get(c.ch) || 1,
+            x: c.x,
+            y: -(trail - 1),
+            speed,
+            trail,
           });
         }
       }
@@ -547,17 +476,51 @@ export function createAsciiCamera(opts = {}) {
       const rOff = camN;
       for (let i = 0; i < cols * rainRows; i++) buf[rOff + i] = CHARS[0];
 
+      if (waveOn && analyser && audioData) {
+        analyser.getByteTimeDomainData(audioData);
+        let sum = 0;
+        for (let k = 0; k < audioData.length; k++) {
+          const v = (audioData[k] - 128) / 128;
+          sum += v * v;
+        }
+        const rms = Math.sqrt(sum / audioData.length);
+        const vol = Math.min(1, rms * 5.5);
+        const rate = vol > smoothVolume ? WAVE_ATTACK : WAVE_RELEASE;
+        smoothVolume += (vol - smoothVolume) * rate;
+
+        if (smoothVolume > 0.02) {
+          const maxH = Math.floor(rainRows * WAVE_MAX_HEIGHT);
+          const t = performance.now();
+          for (let x = 0; x < cols; x++) {
+            const w1 = Math.sin(x * WAVE_FREQ_1 + t * WAVE_SPEED);
+            const w2 = Math.sin(x * WAVE_FREQ_2 - t * WAVE_SPEED * 1.3);
+            const h = Math.max(0, Math.floor(smoothVolume * maxH * (1 + w1 * 0.3 + w2 * 0.2)));
+            for (let dy = 0; dy < h && dy < rainRows; dy++) {
+              const ry = rainRows - 1 - dy;
+              const fade = 1 - dy / h;
+              const ci = Math.max(1, Math.round(cLast * smoothVolume * fade));
+              buf[rOff + ry * cols + x] = CHARS[ci];
+            }
+          }
+        }
+      }
+
       for (const d of drops) {
         const hy = Math.floor(d.y);
-        for (let t = 0; t < RAIN_TRAIL; t++) {
+        for (let t = 0; t < d.trail; t++) {
           const ry = hy + t;
-          if (ry >= 0 && ry < rainRows) buf[rOff + ry * cols + d.x] = d.char;
+          if (ry >= 0 && ry < rainRows) {
+            const fade = t / Math.max(1, d.trail - 1);
+            const fci = Math.max(1, Math.round(d.ci * fade));
+            buf[rOff + ry * cols + d.x] = CHARS[fci];
+          }
         }
       }
     }
 
-    lastBuf = buf;
-    flushBuf(buf);
+    const out = applyPrintIn(buf, now);
+    lastBuf = out;
+    flushBuf(out);
   }
 
   function drawTransition(now) {
@@ -606,13 +569,9 @@ export function createAsciiCamera(opts = {}) {
     startBody() {
       phase = 'body';
       running = true;
+      printInStart = 0;
       bodyBuf = null;
       blankBodyBuf = null;
-      bodyBgLuma = null;
-      bodyBgR = null;
-      bodyBgG = null;
-      bodyBgB = null;
-      bodyPrevLuma = null;
       lastBodyT = 0;
       try { bodyVideo.currentTime = 0; } catch {}
       ensureBodyVideoPlayback();
@@ -627,6 +586,22 @@ export function createAsciiCamera(opts = {}) {
       video.play();
       phase = 'recording';
       running = true;
+      printInStart = performance.now();
+      if (rainOn && !audioCtx) {
+        try {
+          audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+          analyser = audioCtx.createAnalyser();
+          analyser.fftSize = 256;
+          audioSource = audioCtx.createMediaStreamSource(stream);
+          audioSource.connect(analyser);
+          audioData = new Uint8Array(analyser.fftSize);
+        } catch {
+          audioCtx = null;
+          analyser = null;
+          audioSource = null;
+          audioData = null;
+        }
+      }
       resize();
       window.addEventListener('resize', resize);
       rafId = requestAnimationFrame(draw);
@@ -636,6 +611,13 @@ export function createAsciiCamera(opts = {}) {
       video.pause();
       video.srcObject = null;
       bodyVideo.pause();
+      if (audioSource) audioSource.disconnect();
+      if (audioCtx) audioCtx.close().catch(() => {});
+      audioCtx = null;
+      analyser = null;
+      audioSource = null;
+      audioData = null;
+      smoothVolume = 0;
 
       camRows = totalRows;
       rainRows = 0;
@@ -659,6 +641,7 @@ export function createAsciiCamera(opts = {}) {
       lastHelixT = 0;
       transStart = performance.now();
       phase = 'transition';
+      printInStart = 0;
       drops = [];
     },
 
@@ -669,6 +652,13 @@ export function createAsciiCamera(opts = {}) {
       video.pause();
       video.srcObject = null;
       bodyVideo.pause();
+      if (audioSource) audioSource.disconnect();
+      if (audioCtx) audioCtx.close().catch(() => {});
+      audioCtx = null;
+      analyser = null;
+      audioSource = null;
+      audioData = null;
+      smoothVolume = 0;
       phase = 'idle';
       smoothed = null;
       hasPrev = false;
@@ -680,12 +670,10 @@ export function createAsciiCamera(opts = {}) {
       helixData = null;
       bodyBuf = null;
       blankBodyBuf = null;
-      bodyBgLuma = null;
-      bodyBgR = null;
-      bodyBgG = null;
-      bodyBgB = null;
-      bodyPrevLuma = null;
+      printInStart = 0;
     },
+
+    setWave(on) { waveOn = on; if (!on) smoothVolume = 0; },
 
     snapshot() {
       const snap = document.createElement('canvas');

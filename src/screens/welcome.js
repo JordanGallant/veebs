@@ -4,6 +4,8 @@ import { store } from '../lib/store.js';
 import { createAsciiCamera } from '../components/ascii-camera.js';
 
 let cam = null;
+let revealTimer = 0;
+let exitTimer = 0;
 
 export function registerWelcome() {
   registerScreen('welcome', {
@@ -11,6 +13,8 @@ export function registerWelcome() {
     cleanup() {
       if (cam) cam.stop();
       cam = null;
+      clearTimeout(revealTimer);
+      clearTimeout(exitTimer);
     },
   });
 }
@@ -18,6 +22,7 @@ export function registerWelcome() {
 function render(container) {
   cam = createAsciiCamera();
 
+  const brandTitle = el('h1', { class: 'welcome-title' }, 'CYBER TWIN');
   const heading = el('h1', { class: 'text-xl bold' }, 'Extract Your DNA');
 
   const subtitle = el(
@@ -41,7 +46,11 @@ function render(container) {
         audio: true,
       });
       store.mediaStream = stream;
-      navigate('recording');
+      panel.classList.remove('is-visible');
+      panel.classList.add('is-exiting');
+      exitTimer = window.setTimeout(() => {
+        navigate('recording');
+      }, 420);
     } catch {
       btn.removeAttribute('disabled');
       btn.textContent = 'Allow Access';
@@ -51,8 +60,8 @@ function render(container) {
     }
   });
 
-  const panel = el('div', { class: 'overlay-panel' }, heading, subtitle, errorBox, btn);
-  const content = el('div', { class: 'welcome-content' }, panel);
+  const panel = el('div', { class: 'overlay-panel overlay-shell' }, heading, subtitle, errorBox, btn);
+  const content = el('div', { class: 'welcome-content' }, brandTitle, panel);
 
   const wrapper = el(
     'div',
@@ -63,4 +72,7 @@ function render(container) {
 
   container.appendChild(wrapper);
   cam.startBody();
+  revealTimer = window.setTimeout(() => {
+    panel.classList.add('is-visible');
+  }, 900);
 }

@@ -16,6 +16,8 @@ const BIRTHING_MESSAGES = [
 let cam = null;
 let birthingMsgTimer = 0;
 let birthingNavTimer = 0;
+let birthingShowTimer = 0;
+let birthingExitTimer = 0;
 
 export function registerRecording() {
   registerScreen('recording', {
@@ -25,6 +27,8 @@ export function registerRecording() {
       cam = null;
       clearInterval(birthingMsgTimer);
       clearTimeout(birthingNavTimer);
+      clearTimeout(birthingShowTimer);
+      clearTimeout(birthingExitTimer);
     },
   });
 }
@@ -47,7 +51,7 @@ function render(container) {
   const prompt = el(
     'p',
     { class: 'secondary text-sm', style: 'max-width:480px' },
-    'Tell your twin about yourself: your hobbies, interests, and what duties you want your twin to handle for you.',
+    'Tell your twin about your goals in life, your hobbies, interests what is most important to you and what duties you want your twin to handle for you.',
   );
 
   const recDot = el('span', { class: 'rec-dot', style: 'display:none' });
@@ -57,12 +61,12 @@ function render(container) {
   const errorBox = el('p', { class: 'error', style: 'display:none' });
   const createBtn = el('button', { class: 'btn', style: 'display:none' }, 'Create Twin');
 
-  const recordingPanel = el('div', { class: 'overlay-panel' }, prompt, controls, errorBox, createBtn);
+  const recordingPanel = el('div', { class: 'overlay-panel overlay-shell' }, prompt, controls, errorBox, createBtn);
   const recordingContent = el('div', { class: 'recording-content' }, recordingPanel);
 
   const birthingHeading = el('h1', { class: 'text-xl bold' }, 'Birthing Your Twin...');
   const birthingStatus = el('p', { class: 'birthing-status' }, BIRTHING_MESSAGES[0]);
-  const birthingPanel = el('div', { class: 'overlay-panel overlay-panel--compact' }, birthingHeading, birthingStatus);
+  const birthingPanel = el('div', { class: 'overlay-panel overlay-panel--compact overlay-shell' }, birthingHeading, birthingStatus);
   const birthingContent = el('div', { class: 'birthing-content', style: 'display:none' }, birthingPanel);
 
   let recorder = null;
@@ -91,6 +95,7 @@ function render(container) {
       cam.snapshot().then((blob) => {
         store.photoBlob = blob;
       });
+      cam.setWave(true);
 
       elapsed = 0;
       timerEl.textContent = '00:00';
@@ -105,6 +110,7 @@ function render(container) {
     } else {
       const audioBlob = await recorder.stop();
       store.audioBlob = audioBlob;
+      cam.setWave(false);
 
       clearInterval(timerInterval);
       recDot.style.display = 'none';
@@ -114,9 +120,17 @@ function render(container) {
   });
 
   on(createBtn, 'click', () => {
+    createBtn.setAttribute('disabled', '');
     cam.beginBirthing();
-    recordingContent.style.display = 'none';
-    birthingContent.style.display = 'flex';
+    recordingPanel.classList.remove('is-visible');
+    recordingPanel.classList.add('is-exiting');
+    birthingShowTimer = window.setTimeout(() => {
+      recordingContent.style.display = 'none';
+      birthingContent.style.display = 'flex';
+      window.requestAnimationFrame(() => {
+        birthingPanel.classList.add('is-visible');
+      });
+    }, 420);
 
     let msgIdx = 0;
     birthingMsgTimer = window.setInterval(() => {
@@ -125,10 +139,14 @@ function render(container) {
     }, 1200);
 
     birthingNavTimer = window.setTimeout(() => {
-      if (cam) cam.stop();
-      cam = null;
-      navigate('dashboard');
-    }, 6000);
+      birthingPanel.classList.remove('is-visible');
+      birthingPanel.classList.add('is-exiting');
+      birthingExitTimer = window.setTimeout(() => {
+        if (cam) cam.stop();
+        cam = null;
+        navigate('dashboard');
+      }, 420);
+    }, 5600);
   });
 
   const wrapper = el(
@@ -141,4 +159,7 @@ function render(container) {
 
   container.appendChild(wrapper);
   cam.start(stream);
+  window.requestAnimationFrame(() => {
+    recordingPanel.classList.add('is-visible');
+  });
 }
