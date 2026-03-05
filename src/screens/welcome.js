@@ -2,10 +2,13 @@ import { el, on } from '../lib/dom.js';
 import { navigate, registerScreen } from '../lib/router.js';
 import { store } from '../lib/store.js';
 import { createAsciiCamera } from '../components/ascii-camera.js';
+import { animateTypewriter } from '../lib/typewriter.js';
 
 let cam = null;
 let revealTimer = 0;
 let exitTimer = 0;
+let stopBrandType = null;
+let stopHeadingType = null;
 
 export function registerWelcome() {
   registerScreen('welcome', {
@@ -15,6 +18,10 @@ export function registerWelcome() {
       cam = null;
       clearTimeout(revealTimer);
       clearTimeout(exitTimer);
+      if (stopBrandType) stopBrandType();
+      if (stopHeadingType) stopHeadingType();
+      stopBrandType = null;
+      stopHeadingType = null;
     },
   });
 }
@@ -22,8 +29,8 @@ export function registerWelcome() {
 function render(container) {
   cam = createAsciiCamera();
 
-  const brandTitle = el('h1', { class: 'welcome-title' }, 'CYBER TWIN');
-  const heading = el('h1', { class: 'text-lg bold welcome-heading' }, 'Extract Your DNA');
+  const brandTitle = el('h1', { class: 'welcome-title' }, '');
+  const heading = el('h1', { class: 'text-lg bold welcome-heading' }, '');
   const helpToggle = el('button', {
     class: 'welcome-help-toggle',
     type: 'button',
@@ -101,7 +108,17 @@ function render(container) {
 
   container.appendChild(wrapper);
   cam.startBody();
+  stopBrandType = animateTypewriter(brandTitle, 'CYBER TWIN', {
+    delay: 120,
+    speed: 48,
+    swap: false,
+  });
   revealTimer = window.setTimeout(() => {
     panel.classList.add('is-visible');
+    stopHeadingType = animateTypewriter(heading, 'Extract Your DNA', {
+      delay: 80,
+      speed: 26,
+      swap: false,
+    });
   }, 900);
 }

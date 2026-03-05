@@ -5,6 +5,7 @@ import { createChat } from '../components/chat.js';
 import { createCharacter } from '../components/character.js';
 import { createWallet } from '../components/wallet.js';
 import { createWhatsAppQR } from '../components/whatsapp-qr.js';
+import { animateTypewriter } from '../lib/typewriter.js';
 
 const TAB_LABELS = {
   chat: 'Chat',
@@ -13,14 +14,18 @@ const TAB_LABELS = {
 };
 
 let profileImageUrl = '';
+let stopNameType = null;
 
 export function registerDashboard() {
   registerScreen('dashboard', {
     render,
     cleanup() {
-      if (!profileImageUrl) return;
-      URL.revokeObjectURL(profileImageUrl);
-      profileImageUrl = '';
+      if (profileImageUrl) {
+        URL.revokeObjectURL(profileImageUrl);
+        profileImageUrl = '';
+      }
+      if (stopNameType) stopNameType();
+      stopNameType = null;
     },
   });
 }
@@ -34,11 +39,21 @@ function render(container) {
   const nameInput = document.createElement('input');
   nameInput.type = 'text';
   nameInput.className = 'editable-name';
-  nameInput.value = store.name;
+  nameInput.value = '';
   nameInput.setAttribute('aria-label', 'Twin name');
 
   on(nameInput, 'input', () => {
+    if (stopNameType) {
+      stopNameType();
+      stopNameType = null;
+    }
     store.name = nameInput.value;
+  });
+  on(nameInput, 'focus', () => {
+    if (!stopNameType) return;
+    stopNameType();
+    stopNameType = null;
+    nameInput.value = store.name;
   });
 
   const profileImage = el('img', {
@@ -151,6 +166,13 @@ function render(container) {
 
   renderTabs();
   renderTabContent();
+
+  const startingName = store.name || 'Unnamed Twin';
+  stopNameType = animateTypewriter(nameInput, startingName, {
+    delay: 80,
+    speed: 30,
+    swap: false,
+  });
 }
 
 function createSettings(parent) {

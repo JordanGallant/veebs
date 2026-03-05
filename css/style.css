@@ -396,6 +396,7 @@ a {
   font-size: clamp(48px, 8vw, 120px);
   line-height: 0.95;
   text-align: center;
+  min-height: 0.95em;
 }
 
 .overlay-panel {
@@ -455,6 +456,7 @@ a {
 
 .welcome-heading {
   line-height: 1.05;
+  min-height: 1.2em;
 }
 
 .welcome-help-toggle {
@@ -528,24 +530,31 @@ a {
 .recording-heading {
   line-height: 1.05;
   min-height: 2.2em;
+}
+
+.birthing-heading {
+  min-height: 1.2em;
+}
+
+.typewriter-animated {
   transition: opacity 0.16s ease, transform 0.16s ease, filter 0.16s ease;
 }
 
-.recording-heading.is-switching {
+.typewriter-animated.is-switching {
   opacity: 0;
   transform: translateY(-5px);
   filter: blur(3px);
 }
 
-.recording-heading.is-typing::after {
+.typewriter-animated.is-typing::after {
   content: '_';
   display: inline-block;
   margin-left: 2px;
   opacity: 0.8;
-  animation: recording-caret-blink 0.7s steps(1, end) infinite;
+  animation: typewriter-caret-blink 0.7s steps(1, end) infinite;
 }
 
-@keyframes recording-caret-blink {
+@keyframes typewriter-caret-blink {
   0%, 50% { opacity: 0.8; }
   51%, 100% { opacity: 0; }
 }

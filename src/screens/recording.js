@@ -3,6 +3,7 @@ import { navigate, registerScreen } from '../lib/router.js';
 import { store } from '../lib/store.js';
 import { createAsciiCamera } from '../components/ascii-camera.js';
 import { createAudioRecorder } from '../components/audio-recorder.js';
+import { animateTypewriter } from '../lib/typewriter.js';
 
 const BIRTHING_MESSAGES = [
   'Analyzing voice patterns...',
@@ -25,8 +26,8 @@ let birthingMsgTimer = 0;
 let birthingNavTimer = 0;
 let birthingShowTimer = 0;
 let birthingExitTimer = 0;
-let headingTypeTimer = 0;
-let headingSwapTimer = 0;
+let stopQuestionType = null;
+let stopBirthingType = null;
 
 export function registerRecording() {
   registerScreen('recording', {
@@ -38,8 +39,10 @@ export function registerRecording() {
       clearTimeout(birthingNavTimer);
       clearTimeout(birthingShowTimer);
       clearTimeout(birthingExitTimer);
-      clearInterval(headingTypeTimer);
-      clearTimeout(headingSwapTimer);
+      if (stopQuestionType) stopQuestionType();
+      if (stopBirthingType) stopBirthingType();
+      stopQuestionType = null;
+      stopBirthingType = null;
     },
   });
 }
@@ -64,7 +67,7 @@ function render(container) {
   });
   store.asciiTransitionBodyTime = null;
 
-  const heading = el('h1', { class: 'text-lg bold recording-heading' }, 'Answer some questions');
+  const heading = el('h1', { class: 'text-lg bold recording-heading' }, '');
   const helpToggle = el('button', {
     class: 'recording-help-toggle',
     type: 'button',
@@ -104,7 +107,7 @@ function render(container) {
   );
   const recordingContent = el('div', { class: 'recording-content' }, recordingPanel);
 
-  const birthingHeading = el('h1', { class: 'text-xl bold' }, 'Birthing Your Twin...');
+  const birthingHeading = el('h1', { class: 'text-xl bold birthing-heading' }, '');
   const birthingStatus = el('p', { class: 'birthing-status' }, BIRTHING_MESSAGES[0]);
   const birthingPanel = el('div', { class: 'overlay-panel overlay-panel--compact overlay-shell' }, birthingHeading, birthingStatus);
   const birthingContent = el('div', { class: 'birthing-content', style: 'display:none' }, birthingPanel);
@@ -115,33 +118,13 @@ function render(container) {
   let questionIdx = -1;
   let isRecording = false;
 
-  function setHeadingText(text, animate = false) {
-    clearInterval(headingTypeTimer);
-    clearTimeout(headingSwapTimer);
-
-    if (!animate) {
-      heading.classList.remove('is-switching', 'is-typing');
-      heading.textContent = text;
-      return;
-    }
-
-    heading.classList.remove('is-typing');
-    heading.classList.add('is-switching');
-    headingSwapTimer = window.setTimeout(() => {
-      heading.classList.remove('is-switching');
-      heading.classList.add('is-typing');
-      heading.textContent = '';
-
-      let idx = 0;
-      headingTypeTimer = window.setInterval(() => {
-        idx += 1;
-        heading.textContent = text.slice(0, idx);
-        if (idx >= text.length) {
-          clearInterval(headingTypeTimer);
-          heading.classList.remove('is-typing');
-        }
-      }, 20);
-    }, 120);
+  function typeQuestionHeading(text, swap) {
+    if (stopQuestionType) stopQuestionType();
+    stopQuestionType = animateTypewriter(heading, text, {
+      speed: 20,
+      swap,
+      swapDuration: 120,
+    });
   }
 
   function enterBirthing() {
@@ -153,6 +136,12 @@ function render(container) {
       birthingContent.style.display = 'flex';
       window.requestAnimationFrame(() => {
         birthingPanel.classList.add('is-visible');
+        if (stopBirthingType) stopBirthingType();
+        stopBirthingType = animateTypewriter(birthingHeading, 'Birthing Your Twin...', {
+          delay: 70,
+          speed: 30,
+          swap: false,
+        });
       });
     }, 420);
 
@@ -198,7 +187,7 @@ function render(container) {
       cam.setWave(true);
       isRecording = true;
       questionIdx = 0;
-      setHeadingText(TWIN_QUESTIONS[questionIdx], true);
+      typeQuestionHeading(TWIN_QUESTIONS[questionIdx], true);
       flowBtn.textContent = 'Next';
 
       elapsed = 0;
@@ -213,7 +202,7 @@ function render(container) {
 
     if (questionIdx < TWIN_QUESTIONS.length - 1) {
       questionIdx++;
-      setHeadingText(TWIN_QUESTIONS[questionIdx], true);
+      typeQuestionHeading(TWIN_QUESTIONS[questionIdx], true);
       flowBtn.textContent = questionIdx === TWIN_QUESTIONS.length - 1 ? 'Create your twin' : 'Next';
       return;
     }
@@ -249,5 +238,6 @@ function render(container) {
   cam.start(stream);
   window.requestAnimationFrame(() => {
     recordingPanel.classList.add('is-visible');
+    typeQuestionHeading('Answer some questions', false);
   });
 }
