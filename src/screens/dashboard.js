@@ -66,7 +66,7 @@ function render(container) {
   const tabContent = el('div', { class: 'tab-content' });
 
   const tabs = ['chat', 'wallet', 'connect'];
-  let activeTab = 'chat';
+  let activeTab = 'wallet';
   let settingsOpen = false;
   let profileExpanded = false;
 

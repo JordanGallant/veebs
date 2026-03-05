@@ -57,11 +57,13 @@ function render(container) {
   const errorBox = el('p', { class: 'error', style: 'display:none' });
   const createBtn = el('button', { class: 'btn', style: 'display:none' }, 'Create Twin');
 
-  const recordingContent = el('div', { class: 'recording-content' }, prompt, controls, errorBox, createBtn);
+  const recordingPanel = el('div', { class: 'overlay-panel' }, prompt, controls, errorBox, createBtn);
+  const recordingContent = el('div', { class: 'recording-content' }, recordingPanel);
 
   const birthingHeading = el('h1', { class: 'text-xl bold' }, 'Birthing Your Twin...');
   const birthingStatus = el('p', { class: 'birthing-status' }, BIRTHING_MESSAGES[0]);
-  const birthingContent = el('div', { class: 'birthing-content', style: 'display:none' }, birthingHeading, birthingStatus);
+  const birthingPanel = el('div', { class: 'overlay-panel overlay-panel--compact' }, birthingHeading, birthingStatus);
+  const birthingContent = el('div', { class: 'birthing-content', style: 'display:none' }, birthingPanel);
 
   let recorder = null;
   let timerInterval = 0;

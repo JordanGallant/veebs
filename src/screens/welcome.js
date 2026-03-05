@@ -51,7 +51,8 @@ function render(container) {
     }
   });
 
-  const content = el('div', { class: 'welcome-content' }, heading, subtitle, errorBox, btn);
+  const panel = el('div', { class: 'overlay-panel' }, heading, subtitle, errorBox, btn);
+  const content = el('div', { class: 'welcome-content' }, panel);
 
   const wrapper = el(
     'div',

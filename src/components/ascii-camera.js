@@ -4,6 +4,7 @@ const LUMA_BLEND = 0.48;
 const LUMA_GAMMA = 0.78;
 const DIFF_TRACK_ROWS = 5;
 const RAIN_TRAIL = 5;
+const RAIN_MOTION_MIN = 12;
 const MAX_DROPS = 220;
 const MAX_SPAWNS = 16;
 const SPAWN_CHANCE = 0.82;
@@ -11,38 +12,15 @@ const TRANSITION_MS = 1200;
 const HELIX_COUNT = 24;
 const HELIX_STEP_MS = 100;
 const JITTER_CHANCE = 0.12;
-const BODY_COUNT = 36;
-const BODY_STEP_MS = 140;
-const BODY_GLOW = 0.025;
-
-const BODY_PARTS = [
-  [0, -0.39, 0.01, 0, -0.39, 0.01, 0.052],
-  [0, -0.34, 0.005, 0, -0.30, 0.005, 0.022],
-  [-0.09, -0.28, 0, 0.09, -0.28, 0, 0.035],
-  [0.09, -0.28, 0, 0.09, -0.28, 0, 0.032],
-  [-0.09, -0.28, 0, -0.09, -0.28, 0, 0.032],
-  [0, -0.28, 0.02, 0, -0.11, 0.01, 0.085],
-  [-0.04, -0.24, 0.035, 0.04, -0.24, 0.035, 0.042],
-  [-0.035, -0.17, 0.025, 0.035, -0.17, 0.025, 0.038],
-  [0, -0.11, 0.005, 0, 0.02, 0, 0.065],
-  [-0.06, 0.0, 0, 0.06, 0.0, 0, 0.042],
-  [0.09, -0.28, 0, 0.30, -0.28, 0, 0.025],
-  [-0.09, -0.28, 0, -0.30, -0.28, 0, 0.025],
-  [0.30, -0.28, 0, 0.30, -0.28, 0, 0.024],
-  [-0.30, -0.28, 0, -0.30, -0.28, 0, 0.024],
-  [0.30, -0.28, 0, 0.42, -0.24, 0.015, 0.020],
-  [-0.30, -0.28, 0, -0.42, -0.24, 0.015, 0.020],
-  [0.42, -0.24, 0.01, 0.46, -0.22, 0.01, 0.018],
-  [-0.42, -0.24, 0.01, -0.46, -0.22, 0.01, 0.018],
-  [0.05, 0.02, 0, 0.12, 0.22, 0, 0.042],
-  [-0.05, 0.02, 0, -0.12, 0.22, 0, 0.042],
-  [0.12, 0.22, 0, 0.12, 0.22, 0, 0.034],
-  [-0.12, 0.22, 0, -0.12, 0.22, 0, 0.034],
-  [0.12, 0.22, 0, 0.14, 0.40, 0, 0.028],
-  [-0.12, 0.22, 0, -0.14, 0.40, 0, 0.028],
-  [0.14, 0.40, 0, 0.18, 0.43, -0.01, 0.022],
-  [-0.14, 0.40, 0, -0.18, 0.43, -0.01, 0.022],
-];
+const BODY_STEP_MS = 82;
+const BODY_SAMPLES = 2;
+const BODY_MAX_STRETCH_DISTORTION = 1.35;
+const BODY_BG_ADAPT = 0.035;
+const BODY_BG_ADAPT_EDGE = 0.075;
+const BODY_BG_ADAPT_FG = 0.004;
+const BODY_MOTION_GATE = 7.5;
+const BODY_COLOR_GATE_MIN = 12;
+const BODY_VIDEO_URL = new URL('../../assets/rotating-human.mp4', import.meta.url).href;
 
 function detectLightBg() {
   const div = document.createElement('div');
@@ -68,6 +46,16 @@ export function createAsciiCamera(opts = {}) {
   const cvs = document.createElement('canvas');
   const ctx = cvs.getContext('2d', { willReadFrequently: true });
 
+  const bodyVideo = document.createElement('video');
+  bodyVideo.src = BODY_VIDEO_URL;
+  bodyVideo.playsInline = true;
+  bodyVideo.muted = true;
+  bodyVideo.loop = true;
+  bodyVideo.preload = 'auto';
+
+  const bodyCvs = document.createElement('canvas');
+  const bodyCtx = bodyCvs.getContext('2d', { willReadFrequently: true });
+
   let cols = 0, totalRows = 0, camRows = 0, rainRows = 0;
   let phase = 'idle';
   let running = false;
@@ -89,9 +77,21 @@ export function createAsciiCamera(opts = {}) {
   let helixIdx = 0;
   let lastHelixT = 0;
 
-  let bodyData = null;
-  let bodyIdx = 0;
+  let bodyBuf = null;
+  let blankBodyBuf = null;
+  let bodyFailed = false;
+  let bodySampleW = 0;
+  let bodySampleH = 0;
+  let bodyBgLuma = null;
+  let bodyBgR = null;
+  let bodyBgG = null;
+  let bodyBgB = null;
+  let bodyPrevLuma = null;
   let lastBodyT = 0;
+
+  bodyVideo.addEventListener('error', () => {
+    bodyFailed = true;
+  });
 
   function measure() {
     const style = window.getComputedStyle(pre);
@@ -140,7 +140,15 @@ export function createAsciiCamera(opts = {}) {
     hasPrev = false;
     prevBand = null;
     helixData = null;
-    bodyData = null;
+    bodyBuf = null;
+    blankBodyBuf = null;
+    bodySampleW = 0;
+    bodySampleH = 0;
+    bodyBgLuma = null;
+    bodyBgR = null;
+    bodyBgG = null;
+    bodyBgB = null;
+    bodyPrevLuma = null;
     drops = drops.filter(d => d.x < cols && d.y < rainRows);
     invertLuma = detectLightBg();
   }
@@ -178,71 +186,238 @@ export function createAsciiCamera(opts = {}) {
     return helixData;
   }
 
-  function ensureBody() {
-    if (bodyData && bodyData[0].length === cols * totalRows) return bodyData;
-    const cLast = CHARS.length - 1;
-    const scale = Math.min(cols, totalRows) * 0.92;
-    const halfC = cols / 2;
-    const halfR = totalRows / 2;
-    bodyData = [];
-
-    for (let f = 0; f < BODY_COUNT; f++) {
-      const ang = (f / BODY_COUNT) * Math.PI * 2;
-      const cosA = Math.cos(ang);
-      const sinA = Math.sin(ang);
-
-      const rot = BODY_PARTS.map(([ax, ay, az, bx, by, bz, r]) => ({
-        ax: ax * cosA - az * sinA,
-        ay,
-        az: ax * sinA + az * cosA,
-        bx: bx * cosA - bz * sinA,
-        by,
-        bz: bx * sinA + bz * cosA,
-        r,
-      }));
-
-      const frame = new Array(cols * totalRows);
-
-      for (let cy = 0; cy < totalRows; cy++) {
-        const ny = (cy - halfR) / scale;
-        for (let cx = 0; cx < cols; cx++) {
-          const nx = (cx - halfC) / scale;
-
-          let bestPen = 0;
-          let bestGlow = 0;
-
-          for (const p of rot) {
-            const dx = p.bx - p.ax;
-            const dy = p.by - p.ay;
-            const lsq = dx * dx + dy * dy;
-            const t = lsq < 1e-8 ? 0 : Math.max(0, Math.min(1, ((nx - p.ax) * dx + (ny - p.ay) * dy) / lsq));
-            const px = p.ax + t * dx;
-            const py = p.ay + t * dy;
-            const d2d = Math.sqrt((nx - px) ** 2 + (ny - py) ** 2);
-
-            if (d2d < p.r) {
-              const pen = (p.r - d2d) / p.r;
-              if (pen > bestPen) bestPen = pen;
-            } else if (d2d < p.r + BODY_GLOW) {
-              const g = 1 - (d2d - p.r) / BODY_GLOW;
-              if (g > bestGlow) bestGlow = g;
-            }
-          }
-
-          let ci;
-          if (bestPen > 0) {
-            ci = Math.max(1, Math.floor((0.25 + 0.75 * bestPen) * cLast));
-          } else if (bestGlow > 0) {
-            ci = Math.max(1, Math.floor(bestGlow * cLast * 0.18));
-          } else {
-            ci = 0;
-          }
-          frame[cy * cols + cx] = CHARS[ci];
-        }
-      }
-      bodyData.push(frame);
+  function ensureBodyVideoPlayback() {
+    if (bodyFailed) return;
+    if (bodyVideo.readyState < 2 || !bodyVideo.paused) return;
+    const playPromise = bodyVideo.play();
+    if (playPromise && typeof playPromise.catch === 'function') {
+      playPromise.catch(() => {});
     }
-    return bodyData;
+  }
+
+  function ensureBlankBody() {
+    if (blankBodyBuf && blankBodyBuf.length === cols * totalRows) return blankBodyBuf;
+    const n = cols * totalRows;
+    blankBodyBuf = new Array(n).fill(CHARS[0]);
+    return blankBodyBuf;
+  }
+
+  function buildBodyFrameFromVideo() {
+    if (!cols || !totalRows || !bodyCtx || bodyVideo.readyState < 2) return null;
+
+    const sampleW = Math.max(1, cols * BODY_SAMPLES);
+    const sampleH = Math.max(1, totalRows * BODY_SAMPLES);
+    if (sampleW !== bodySampleW || sampleH !== bodySampleH) {
+      bodySampleW = sampleW;
+      bodySampleH = sampleH;
+      bodyCvs.width = sampleW;
+      bodyCvs.height = sampleH;
+    }
+
+    bodyCtx.fillStyle = '#000';
+    bodyCtx.fillRect(0, 0, sampleW, sampleH);
+
+    const srcW = Math.max(1, bodyVideo.videoWidth || 1);
+    const srcH = Math.max(1, bodyVideo.videoHeight || 1);
+    const srcAspect = srcW / srcH;
+    const dstAspect = sampleW / sampleH;
+    const distortion = srcAspect > dstAspect ? (srcAspect / dstAspect) : (dstAspect / srcAspect);
+
+    if (distortion <= BODY_MAX_STRETCH_DISTORTION) {
+      // Fill the entire viewport first; only switch to crop when stretching gets excessive.
+      bodyCtx.drawImage(bodyVideo, 0, 0, srcW, srcH, 0, 0, sampleW, sampleH);
+    } else if (srcAspect > dstAspect) {
+      const cropW = Math.max(1, Math.floor(srcH * dstAspect));
+      const cropX = Math.floor((srcW - cropW) * 0.5);
+      bodyCtx.drawImage(bodyVideo, cropX, 0, cropW, srcH, 0, 0, sampleW, sampleH);
+    } else {
+      const cropH = Math.max(1, Math.floor(srcW / dstAspect));
+      const cropY = Math.floor((srcH - cropH) * 0.5);
+      bodyCtx.drawImage(bodyVideo, 0, cropY, srcW, cropH, 0, 0, sampleW, sampleH);
+    }
+
+    const { data } = bodyCtx.getImageData(0, 0, sampleW, sampleH);
+    const n = cols * totalRows;
+    const rVals = new Float32Array(n);
+    const gVals = new Float32Array(n);
+    const bVals = new Float32Array(n);
+    const luma = new Float32Array(n);
+
+    let i = 0;
+    for (let y = 0; y < totalRows; y++) {
+      const sy = y * BODY_SAMPLES;
+      for (let x = 0; x < cols; x++) {
+        const sx = x * BODY_SAMPLES;
+
+        let sumR = 0;
+        let sumG = 0;
+        let sumB = 0;
+        for (let oy = 0; oy < BODY_SAMPLES; oy++) {
+          const row = (sy + oy) * sampleW;
+          for (let ox = 0; ox < BODY_SAMPLES; ox++) {
+            const p = (row + sx + ox) * 4;
+            sumR += data[p];
+            sumG += data[p + 1];
+            sumB += data[p + 2];
+          }
+        }
+        const div = BODY_SAMPLES * BODY_SAMPLES;
+        const r = sumR / div;
+        const g = sumG / div;
+        const b = sumB / div;
+        rVals[i] = r;
+        gVals[i] = g;
+        bVals[i] = b;
+        luma[i] = r * 0.2126 + g * 0.7152 + b * 0.0722;
+        i++;
+      }
+    }
+
+    if (!bodyBgLuma || bodyBgLuma.length !== n) {
+      bodyBgLuma = new Float32Array(luma);
+      bodyBgR = new Float32Array(rVals);
+      bodyBgG = new Float32Array(gVals);
+      bodyBgB = new Float32Array(bVals);
+      bodyPrevLuma = new Float32Array(luma);
+    }
+
+    let bgR = 0;
+    let bgG = 0;
+    let bgB = 0;
+    let bgCount = 0;
+    const edgeStepX = Math.max(1, Math.floor(cols / 16));
+    const edgeStepY = Math.max(1, Math.floor(totalRows / 16));
+    for (let x = 0; x < cols; x += edgeStepX) {
+      const top = x;
+      const bottom = (totalRows - 1) * cols + x;
+      bgR += rVals[top] + rVals[bottom];
+      bgG += gVals[top] + gVals[bottom];
+      bgB += bVals[top] + bVals[bottom];
+      bgCount += 2;
+    }
+    for (let y = 1; y < totalRows - 1; y += edgeStepY) {
+      const left = y * cols;
+      const right = left + (cols - 1);
+      bgR += rVals[left] + rVals[right];
+      bgG += gVals[left] + gVals[right];
+      bgB += bVals[left] + bVals[right];
+      bgCount += 2;
+    }
+    if (!bgCount) {
+      bgR = rVals[Math.floor(n / 2)];
+      bgG = gVals[Math.floor(n / 2)];
+      bgB = bVals[Math.floor(n / 2)];
+      bgCount = 1;
+    } else {
+      bgR /= bgCount;
+      bgG /= bgCount;
+      bgB /= bgCount;
+    }
+
+    let borderVar = 0;
+    for (let x = 0; x < cols; x += edgeStepX) {
+      const top = x;
+      const bottom = (totalRows - 1) * cols + x;
+      borderVar += Math.hypot(rVals[top] - bgR, gVals[top] - bgG, bVals[top] - bgB);
+      borderVar += Math.hypot(rVals[bottom] - bgR, gVals[bottom] - bgG, bVals[bottom] - bgB);
+    }
+    for (let y = 1; y < totalRows - 1; y += edgeStepY) {
+      const left = y * cols;
+      const right = left + (cols - 1);
+      borderVar += Math.hypot(rVals[left] - bgR, gVals[left] - bgG, bVals[left] - bgB);
+      borderVar += Math.hypot(rVals[right] - bgR, gVals[right] - bgG, bVals[right] - bgB);
+    }
+    borderVar /= bgCount;
+
+    const colorGate = Math.max(BODY_COLOR_GATE_MIN, borderVar * 2.25 + 6);
+    const colorGateSq = colorGate * colorGate;
+    const modelGateSq = (colorGate * 0.85) * (colorGate * 0.85);
+
+    const mask = new Uint8Array(n);
+    let fgMin = 255;
+    let fgMax = 0;
+    let fgCount = 0;
+
+    for (let k = 0; k < n; k++) {
+      const y = Math.floor(k / cols);
+      const x = k - y * cols;
+      const r = rVals[k];
+      const g = gVals[k];
+      const b = bVals[k];
+      const lum = luma[k];
+
+      const dr = r - bgR;
+      const dg = g - bgG;
+      const db = b - bgB;
+      const edgeDistSq = dr * dr + dg * dg + db * db;
+
+      const mr = r - bodyBgR[k];
+      const mg = g - bodyBgG[k];
+      const mb = b - bodyBgB[k];
+      const modelDistSq = mr * mr + mg * mg + mb * mb;
+
+      const modelMotion = Math.abs(lum - bodyBgLuma[k]);
+      const frameMotion = bodyPrevLuma ? Math.abs(lum - bodyPrevLuma[k]) : 0;
+
+      const isFg =
+        edgeDistSq > colorGateSq ||
+        modelDistSq > modelGateSq ||
+        modelMotion > BODY_MOTION_GATE ||
+        frameMotion > BODY_MOTION_GATE * 0.8;
+
+      if (isFg) {
+        mask[k] = 1;
+        fgCount++;
+        if (lum < fgMin) fgMin = lum;
+        if (lum > fgMax) fgMax = lum;
+      }
+
+      const edge = x === 0 || x === cols - 1 || y === 0 || y === totalRows - 1;
+      const alpha = isFg ? BODY_BG_ADAPT_FG : (edge ? BODY_BG_ADAPT_EDGE : BODY_BG_ADAPT);
+      bodyBgR[k] += (r - bodyBgR[k]) * alpha;
+      bodyBgG[k] += (g - bodyBgG[k]) * alpha;
+      bodyBgB[k] += (b - bodyBgB[k]) * alpha;
+      bodyBgLuma[k] += (lum - bodyBgLuma[k]) * alpha;
+    }
+    if (bodyPrevLuma && bodyPrevLuma.length === n) bodyPrevLuma.set(luma);
+
+    if (!fgCount) return ensureBlankBody().slice();
+
+    const range = Math.max(1, fgMax - fgMin);
+    const cLast = CHARS.length - 1;
+    const buf = new Array(n);
+    for (let k = 0; k < n; k++) {
+      if (!mask[k]) {
+        buf[k] = CHARS[0];
+        continue;
+      }
+      let norm = (luma[k] - fgMin) / range;
+      norm = Math.pow(Math.min(1, Math.max(0, norm)), 0.68);
+      let ci = Math.floor(norm * cLast);
+      if (ci < 1) ci = 1;
+      if (ci > cLast) ci = cLast;
+      buf[k] = CHARS[ci];
+    }
+
+    const cleaned = buf.slice();
+    const blank = CHARS[0];
+    for (let y = 1; y < totalRows - 1; y++) {
+      const row = y * cols;
+      for (let x = 1; x < cols - 1; x++) {
+        const idx = row + x;
+        if (buf[idx] === blank) continue;
+        let neighbors = 0;
+        for (let oy = -1; oy <= 1; oy++) {
+          for (let ox = -1; ox <= 1; ox++) {
+            if (!ox && !oy) continue;
+            if (buf[idx + oy * cols + ox] !== blank) neighbors++;
+          }
+        }
+        if (neighbors <= 2) cleaned[idx] = blank;
+      }
+    }
+
+    return cleaned;
   }
 
   function flushBuf(buf) {
@@ -267,13 +442,15 @@ export function createAsciiCamera(opts = {}) {
 
   function drawBody(now) {
     if (!cols || !totalRows) return;
-    const frames = ensureBody();
-    if (!lastBodyT) lastBodyT = now;
-    if (now - lastBodyT >= BODY_STEP_MS) {
-      bodyIdx = (bodyIdx + 1) % frames.length;
+
+    ensureBodyVideoPlayback();
+    if (!lastBodyT || now - lastBodyT >= BODY_STEP_MS) {
+      const next = buildBodyFrameFromVideo();
+      if (next) bodyBuf = next;
       lastBodyT = now;
     }
-    flushBuf(frames[bodyIdx]);
+
+    flushBuf(bodyBuf || ensureBlankBody());
   }
 
   function drawRecording() {
@@ -325,31 +502,45 @@ export function createAsciiCamera(opts = {}) {
     if (rainOn && rainRows > 0) {
       const tracked = Math.min(DIFF_TRACK_ROWS, camRows);
       const bandN = tracked * cols;
-      const nextBand = new Array(bandN);
-      let bi = 0, spawns = 0;
 
+      const nextLumaBand = new Float32Array(bandN);
+      let bi = 0;
       for (let sr = 0; sr < tracked; sr++) {
-        const y = camRows - tracked + sr;
-        const rs = y * cols;
+        const row = (camRows - tracked + sr) * cols;
         for (let x = 0; x < cols; x++) {
-          const ch = buf[rs + x];
-          nextBand[bi] = ch;
-          if (
-            prevBand && ch !== prevBand[bi] && ch !== CHARS[0] &&
-            spawns < MAX_SPAWNS && drops.length < MAX_DROPS &&
-            Math.random() < SPAWN_CHANCE
-          ) {
-            drops.push({
-              char: ch, x,
-              y: -(RAIN_TRAIL - 1),
-              speed: 0.28 + Math.random() * 0.34,
-            });
-            spawns++;
-          }
-          bi++;
+          nextLumaBand[bi++] = smoothed[row + x];
         }
       }
-      prevBand = nextBand;
+
+      const candidates = [];
+      if (prevBand) {
+        for (let i = 0; i < bandN; i++) {
+          if (Math.abs(nextLumaBand[i] - prevBand[i]) > RAIN_MOTION_MIN) {
+            const x = i % cols;
+            const bufIdx = (camRows - tracked + Math.floor(i / cols)) * cols + x;
+            const ch = buf[bufIdx];
+            if (ch !== CHARS[0]) {
+              candidates.push({ ch, x });
+            }
+          }
+        }
+      }
+      prevBand = nextLumaBand;
+
+      const budget = Math.min(MAX_SPAWNS, MAX_DROPS - drops.length);
+      const limit = Math.min(candidates.length, budget);
+      for (let i = 0; i < limit; i++) {
+        const j = i + Math.floor(Math.random() * (candidates.length - i));
+        [candidates[i], candidates[j]] = [candidates[j], candidates[i]];
+        if (Math.random() < SPAWN_CHANCE) {
+          const c = candidates[i];
+          drops.push({
+            char: c.ch, x: c.x,
+            y: -(RAIN_TRAIL - 1),
+            speed: 0.28 + Math.random() * 0.34,
+          });
+        }
+      }
 
       drops = drops.filter(d => { d.y += d.speed; return d.y < rainRows; });
 
@@ -415,12 +606,23 @@ export function createAsciiCamera(opts = {}) {
     startBody() {
       phase = 'body';
       running = true;
+      bodyBuf = null;
+      blankBodyBuf = null;
+      bodyBgLuma = null;
+      bodyBgR = null;
+      bodyBgG = null;
+      bodyBgB = null;
+      bodyPrevLuma = null;
+      lastBodyT = 0;
+      try { bodyVideo.currentTime = 0; } catch {}
+      ensureBodyVideoPlayback();
       resize();
       window.addEventListener('resize', resize);
       rafId = requestAnimationFrame(draw);
     },
 
     start(stream) {
+      bodyVideo.pause();
       video.srcObject = stream;
       video.play();
       phase = 'recording';
@@ -433,6 +635,7 @@ export function createAsciiCamera(opts = {}) {
     beginBirthing() {
       video.pause();
       video.srcObject = null;
+      bodyVideo.pause();
 
       camRows = totalRows;
       rainRows = 0;
@@ -465,6 +668,7 @@ export function createAsciiCamera(opts = {}) {
       window.removeEventListener('resize', resize);
       video.pause();
       video.srcObject = null;
+      bodyVideo.pause();
       phase = 'idle';
       smoothed = null;
       hasPrev = false;
@@ -474,7 +678,13 @@ export function createAsciiCamera(opts = {}) {
       frozen = null;
       flipTimes = null;
       helixData = null;
-      bodyData = null;
+      bodyBuf = null;
+      blankBodyBuf = null;
+      bodyBgLuma = null;
+      bodyBgR = null;
+      bodyBgG = null;
+      bodyBgB = null;
+      bodyPrevLuma = null;
     },
 
     snapshot() {

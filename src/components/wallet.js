@@ -98,7 +98,7 @@ export function createWallet(parent) {
     renderTx();
   });
 
-  const wrapper = el('div', { class: 'tab-content', style: 'gap:var(--space-sm)' },
+  const wrapper = el('div', { class: 'tab-content finance-panel' },
     balanceEl,
     el('hr', { class: 'divider' }),
     limitForm,
