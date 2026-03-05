@@ -1,6 +1,6 @@
 :root {
   --color-fg: #2b2927;
-  --color-bg: #2200ff;
+  --color-bg: #b5b4ea;
   --font: 'IBM Plex Mono', monospace;
   --font-header: 'Stylish', cursive;
   --font-normal: 400;
@@ -438,6 +438,178 @@ a {
   width: min(460px, 100%);
 }
 
+.welcome-panel {
+  width: min(480px, 100%);
+  align-items: stretch;
+  gap: var(--space-sm);
+  text-align: left;
+  padding: var(--space-md);
+}
+
+.welcome-heading-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-sm);
+}
+
+.welcome-heading {
+  line-height: 1.05;
+}
+
+.welcome-help-toggle {
+  width: 32px;
+  height: 32px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--color-fg) 30%, transparent);
+  background: transparent;
+  color: var(--color-fg);
+  font-family: var(--font-header);
+  font-size: 20px;
+  line-height: 1;
+  flex-shrink: 0;
+  cursor: pointer;
+  transition: background-color 0.2s, border-color 0.2s;
+}
+
+.welcome-help-toggle:hover {
+  background: color-mix(in srgb, var(--color-fg) 8%, transparent);
+}
+
+.welcome-help-toggle:focus-visible {
+  outline: 2px solid var(--color-fg);
+  outline-offset: 2px;
+}
+
+.welcome-help-wrap {
+  display: grid;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  transition: grid-template-rows 0.28s ease, opacity 0.2s ease;
+}
+
+.welcome-help-wrap.is-open {
+  grid-template-rows: 1fr;
+  opacity: 1;
+}
+
+.welcome-help-body {
+  overflow: hidden;
+}
+
+.welcome-help-text {
+  max-width: none;
+}
+
+.welcome-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+}
+
+.welcome-actions .btn {
+  flex: 1 1 210px;
+}
+
+.recording-panel {
+  align-items: stretch;
+  gap: var(--space-sm);
+  text-align: left;
+  padding: var(--space-md);
+}
+
+.recording-heading-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-sm);
+}
+
+.recording-heading {
+  line-height: 1.05;
+  min-height: 2.2em;
+  transition: opacity 0.16s ease, transform 0.16s ease, filter 0.16s ease;
+}
+
+.recording-heading.is-switching {
+  opacity: 0;
+  transform: translateY(-5px);
+  filter: blur(3px);
+}
+
+.recording-heading.is-typing::after {
+  content: '_';
+  display: inline-block;
+  margin-left: 2px;
+  opacity: 0.8;
+  animation: recording-caret-blink 0.7s steps(1, end) infinite;
+}
+
+@keyframes recording-caret-blink {
+  0%, 50% { opacity: 0.8; }
+  51%, 100% { opacity: 0; }
+}
+
+.recording-help-toggle {
+  width: 32px;
+  height: 32px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--color-fg) 30%, transparent);
+  background: transparent;
+  color: var(--color-fg);
+  font-family: var(--font-header);
+  font-size: 20px;
+  line-height: 1;
+  flex-shrink: 0;
+  cursor: pointer;
+  transition: background-color 0.2s, border-color 0.2s;
+}
+
+.recording-help-toggle:hover {
+  background: color-mix(in srgb, var(--color-fg) 8%, transparent);
+}
+
+.recording-help-toggle:focus-visible {
+  outline: 2px solid var(--color-fg);
+  outline-offset: 2px;
+}
+
+.recording-help-wrap {
+  display: grid;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  transition: grid-template-rows 0.28s ease, opacity 0.2s ease;
+}
+
+.recording-help-wrap.is-open {
+  grid-template-rows: 1fr;
+  opacity: 1;
+}
+
+.recording-help-body {
+  overflow: hidden;
+}
+
+.recording-help-text {
+  max-width: none;
+}
+
+.rec-status {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-sm);
+  min-height: 1.5em;
+}
+
+.rec-controls--compact {
+  gap: var(--space-sm);
+}
+
+.rec-controls--compact .btn {
+  flex: 1 1 180px;
+}
+
 /* --- Recording controls --- */
 
 .recording-screen {
@@ -686,6 +858,14 @@ a {
 
   .overlay-panel {
     padding: var(--space-md);
+  }
+
+  .welcome-actions .btn {
+    flex-basis: 100%;
+  }
+
+  .rec-controls--compact .btn {
+    flex-basis: 100%;
   }
 
   .dashboard {

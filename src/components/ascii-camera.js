@@ -33,7 +33,8 @@ const CAM_MAX_STRETCH_DISTORTION = BODY_MAX_STRETCH_DISTORTION;
 const BODY_BG_ABS_LUMA_CUTOFF = 18;
 const BODY_BG_REL_LUMA_CUTOFF = 0.16;
 const BODY_DETAIL_GAMMA = 0.72;
-const BODY_VIDEO_URL = new URL('../../assets/cybertwin.m4v', import.meta.url).href;
+const BODY_VIDEO_REV = 'gray20-960-crf30';
+const BODY_VIDEO_URL = new URL(`../../assets/cybertwin.m4v?v=${BODY_VIDEO_REV}`, import.meta.url).href;
 
 function detectLightBg() {
   const div = document.createElement('div');
@@ -51,6 +52,9 @@ export function createAsciiCamera(opts = {}) {
   pre.className = 'ascii-viewport';
   const mirror = opts.mirror === true;
   const rainOn = opts.rain === true;
+  const transitionBodyTime = Number.isFinite(opts.transitionBodyTime)
+    ? Math.max(0, opts.transitionBodyTime)
+    : null;
 
   const video = document.createElement('video');
   video.playsInline = true;
@@ -104,6 +108,7 @@ export function createAsciiCamera(opts = {}) {
   let bodySampleH = 0;
   let lastBodyT = 0;
   let printInStart = 0;
+  let printSourceBuf = null;
 
   bodyVideo.addEventListener('error', () => {
     bodyFailed = true;
@@ -160,6 +165,7 @@ export function createAsciiCamera(opts = {}) {
     blankBodyBuf = null;
     bodySampleW = 0;
     bodySampleH = 0;
+    printSourceBuf = null;
     drops = drops.filter(d => d.x < cols && d.y < rainRows);
     invertLuma = detectLightBg();
   }
@@ -349,7 +355,9 @@ export function createAsciiCamera(opts = {}) {
       lastBodyT = now;
     }
 
-    flushBuf(bodyBuf || ensureBlankBody());
+    const out = bodyBuf || ensureBlankBody();
+    lastBuf = out;
+    flushBuf(out);
   }
 
   function noise01(x, y, t) {
@@ -357,12 +365,14 @@ export function createAsciiCamera(opts = {}) {
     return n - Math.floor(n);
   }
 
-  function applyPrintIn(buf, now) {
-    if (!printInStart) return buf;
+  function applyPrintIn(fromBuf, toBuf, now) {
+    if (!printInStart) return toBuf;
     const progress = Math.min(1, (now - printInStart) / PRINT_IN_MS);
     if (progress >= 1) {
       printInStart = 0;
-      return buf;
+      printSourceBuf = null;
+      bodyVideo.pause();
+      return toBuf;
     }
 
     const n = cols * totalRows;
@@ -377,18 +387,21 @@ export function createAsciiCamera(opts = {}) {
       const row = y * cols;
       for (let x = 0; x < cols; x++) {
         const idx = row + x;
+        const fromCh = fromBuf[idx] || CHARS[0];
         if (depth >= PRINT_BAND_ROWS) {
-          out[idx] = buf[idx];
+          out[idx] = toBuf[idx];
           continue;
         }
         if (depth <= -1) {
-          out[idx] = CHARS[0];
+          out[idx] = fromCh;
           continue;
         }
         const reveal = Math.min(1, Math.max(0, (depth + 1) / (PRINT_BAND_ROWS + 1)));
         const z = noise01(x, y, t);
         if (z < reveal * (1 - PRINT_SPARKLE)) {
-          out[idx] = buf[idx];
+          out[idx] = toBuf[idx];
+        } else if (z < 0.84) {
+          out[idx] = fromCh;
         } else {
           const ci = noiseMin + Math.floor(z * (cLast - noiseMin + 1));
           out[idx] = CHARS[ci];
@@ -544,7 +557,18 @@ export function createAsciiCamera(opts = {}) {
       }
     }
 
-    const out = applyPrintIn(buf, now);
+    let fromBuf = ensureBlankBody();
+    if (printInStart) {
+      ensureBodyVideoPlayback();
+      if (!lastBodyT || now - lastBodyT >= BODY_STEP_MS) {
+        const next = buildBodyFrameFromVideo();
+        if (next) printSourceBuf = next;
+        lastBodyT = now;
+      }
+      if (printSourceBuf) fromBuf = printSourceBuf;
+    }
+
+    const out = applyPrintIn(fromBuf, buf, now);
     lastBuf = out;
     flushBuf(out);
   }
@@ -596,6 +620,7 @@ export function createAsciiCamera(opts = {}) {
       phase = 'body';
       running = true;
       printInStart = 0;
+      printSourceBuf = null;
       bodyBuf = null;
       blankBodyBuf = null;
       lastBodyT = 0;
@@ -607,12 +632,24 @@ export function createAsciiCamera(opts = {}) {
     },
 
     start(stream) {
-      bodyVideo.pause();
       video.srcObject = stream;
       video.play();
       phase = 'recording';
       running = true;
       printInStart = performance.now();
+      printSourceBuf = null;
+      bodyBuf = null;
+      lastBodyT = 0;
+      if (transitionBodyTime !== null) {
+        const seekToTransitionTime = () => {
+          try { bodyVideo.currentTime = transitionBodyTime; } catch {}
+        };
+        if (bodyVideo.readyState >= 1) seekToTransitionTime();
+        else bodyVideo.addEventListener('loadedmetadata', seekToTransitionTime, { once: true });
+        ensureBodyVideoPlayback();
+      } else {
+        bodyVideo.pause();
+      }
       if (rainOn && !audioCtx) {
         try {
           audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -668,6 +705,7 @@ export function createAsciiCamera(opts = {}) {
       transStart = performance.now();
       phase = 'transition';
       printInStart = 0;
+      printSourceBuf = null;
       drops = [];
     },
 
@@ -697,6 +735,7 @@ export function createAsciiCamera(opts = {}) {
       bodyBuf = null;
       blankBodyBuf = null;
       printInStart = 0;
+      printSourceBuf = null;
     },
 
     setWave(on) { waveOn = on; if (!on) smoothVolume = 0; },
@@ -707,6 +746,12 @@ export function createAsciiCamera(opts = {}) {
       snap.height = video.videoHeight || 480;
       snap.getContext('2d').drawImage(video, 0, 0);
       return new Promise(r => snap.toBlob(b => r(b), 'image/jpeg', 0.85));
+    },
+
+    captureBodyVideoTime() {
+      if (bodyFailed) return null;
+      const t = bodyVideo.currentTime;
+      return Number.isFinite(t) ? t : null;
     },
   };
 }

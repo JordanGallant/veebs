@@ -13,11 +13,20 @@ const BIRTHING_MESSAGES = [
   'Bootstrapping consciousness...',
 ];
 
+const TWIN_QUESTIONS = [
+  'What are your goals in life?',
+  'Which hobbies and interests shape who you are?',
+  'What is most important to you right now?',
+  'Which duties should your twin handle for you?',
+];
+
 let cam = null;
 let birthingMsgTimer = 0;
 let birthingNavTimer = 0;
 let birthingShowTimer = 0;
 let birthingExitTimer = 0;
+let headingTypeTimer = 0;
+let headingSwapTimer = 0;
 
 export function registerRecording() {
   registerScreen('recording', {
@@ -29,6 +38,8 @@ export function registerRecording() {
       clearTimeout(birthingNavTimer);
       clearTimeout(birthingShowTimer);
       clearTimeout(birthingExitTimer);
+      clearInterval(headingTypeTimer);
+      clearTimeout(headingSwapTimer);
     },
   });
 }
@@ -46,22 +57,51 @@ function render(container) {
     return;
   }
 
-  cam = createAsciiCamera({ mirror: true, rain: true });
+  cam = createAsciiCamera({
+    mirror: true,
+    rain: true,
+    transitionBodyTime: store.asciiTransitionBodyTime,
+  });
+  store.asciiTransitionBodyTime = null;
 
+  const heading = el('h1', { class: 'text-lg bold recording-heading' }, 'Answer some questions');
+  const helpToggle = el('button', {
+    class: 'recording-help-toggle',
+    type: 'button',
+    'aria-expanded': 'false',
+    'aria-controls': 'recording-help',
+    'aria-label': 'Recording tips',
+  }, '?');
   const prompt = el(
     'p',
-    { class: 'secondary text-sm', style: 'max-width:480px' },
-    'Tell your twin about your goals in life, your hobbies, interests what is most important to you and what duties you want your twin to handle for you.',
+    { class: 'secondary text-sm recording-help-text' },
+    'These answers seed your twin character. This process is recorded to capture how you look and sound.',
   );
+  const promptBody = el('div', { class: 'recording-help-body' }, prompt);
+  const promptWrap = el('div', { class: 'recording-help-wrap', id: 'recording-help' }, promptBody);
+  const headingRow = el('div', { class: 'recording-heading-row' }, heading, helpToggle);
 
   const recDot = el('span', { class: 'rec-dot', style: 'display:none' });
   const timerEl = el('span', { class: 'rec-timer' }, '00:00');
-  const recBtn = el('button', { class: 'btn' }, 'Start Recording');
-  const controls = el('div', { class: 'rec-controls' }, recDot, timerEl, recBtn);
+  const status = el('div', { class: 'rec-status' }, recDot, timerEl);
+  const flowBtn = el('button', { class: 'btn' }, 'Start');
+  const controls = el('div', { class: 'rec-controls rec-controls--compact' }, flowBtn);
   const errorBox = el('p', { class: 'error', style: 'display:none' });
-  const createBtn = el('button', { class: 'btn', style: 'display:none' }, 'Create Twin');
 
-  const recordingPanel = el('div', { class: 'overlay-panel overlay-shell' }, prompt, controls, errorBox, createBtn);
+  on(helpToggle, 'click', () => {
+    const isOpen = promptWrap.classList.toggle('is-open');
+    helpToggle.setAttribute('aria-expanded', String(isOpen));
+  });
+
+  const recordingPanel = el(
+    'div',
+    { class: 'overlay-panel overlay-panel--compact overlay-shell recording-panel' },
+    headingRow,
+    promptWrap,
+    status,
+    controls,
+    errorBox,
+  );
   const recordingContent = el('div', { class: 'recording-content' }, recordingPanel);
 
   const birthingHeading = el('h1', { class: 'text-xl bold' }, 'Birthing Your Twin...');
@@ -72,55 +112,39 @@ function render(container) {
   let recorder = null;
   let timerInterval = 0;
   let elapsed = 0;
+  let questionIdx = -1;
+  let isRecording = false;
 
-  on(recBtn, 'click', async () => {
-    if (!recorder || !recorder.isRecording()) {
-      errorBox.style.display = 'none';
-      recorder = createAudioRecorder(stream);
-      try {
-        recorder.start();
-      } catch {
-        recorder = null;
-        recDot.style.display = 'none';
-        recBtn.textContent = 'Start Recording';
-        createBtn.style.display = 'none';
-        clearInterval(timerInterval);
-        timerEl.textContent = '00:00';
-        errorBox.style.display = '';
-        errorBox.textContent =
-          'Recording could not start in this browser/device setup. Try refreshing, allowing microphone access, and closing other apps that might use the mic.';
-        return;
-      }
+  function setHeadingText(text, animate = false) {
+    clearInterval(headingTypeTimer);
+    clearTimeout(headingSwapTimer);
 
-      cam.snapshot().then((blob) => {
-        store.photoBlob = blob;
-      });
-      cam.setWave(true);
-
-      elapsed = 0;
-      timerEl.textContent = '00:00';
-      recDot.style.display = '';
-      recBtn.textContent = 'Stop Recording';
-      createBtn.style.display = 'none';
-
-      timerInterval = window.setInterval(() => {
-        elapsed++;
-        timerEl.textContent = formatTime(elapsed);
-      }, 1000);
-    } else {
-      const audioBlob = await recorder.stop();
-      store.audioBlob = audioBlob;
-      cam.setWave(false);
-
-      clearInterval(timerInterval);
-      recDot.style.display = 'none';
-      recBtn.textContent = 'Re-record';
-      createBtn.style.display = '';
+    if (!animate) {
+      heading.classList.remove('is-switching', 'is-typing');
+      heading.textContent = text;
+      return;
     }
-  });
 
-  on(createBtn, 'click', () => {
-    createBtn.setAttribute('disabled', '');
+    heading.classList.remove('is-typing');
+    heading.classList.add('is-switching');
+    headingSwapTimer = window.setTimeout(() => {
+      heading.classList.remove('is-switching');
+      heading.classList.add('is-typing');
+      heading.textContent = '';
+
+      let idx = 0;
+      headingTypeTimer = window.setInterval(() => {
+        idx += 1;
+        heading.textContent = text.slice(0, idx);
+        if (idx >= text.length) {
+          clearInterval(headingTypeTimer);
+          heading.classList.remove('is-typing');
+        }
+      }, 20);
+    }, 120);
+  }
+
+  function enterBirthing() {
     cam.beginBirthing();
     recordingPanel.classList.remove('is-visible');
     recordingPanel.classList.add('is-exiting');
@@ -147,6 +171,70 @@ function render(container) {
         navigate('dashboard');
       }, 420);
     }, 5600);
+  }
+
+  on(flowBtn, 'click', async () => {
+    errorBox.style.display = 'none';
+
+    if (!isRecording) {
+      recorder = createAudioRecorder(stream);
+      try {
+        recorder.start();
+      } catch {
+        recorder = null;
+        recDot.style.display = 'none';
+        flowBtn.textContent = 'Start';
+        clearInterval(timerInterval);
+        timerEl.textContent = '00:00';
+        errorBox.style.display = '';
+        errorBox.textContent =
+          'Recording could not start in this browser/device setup. Try refreshing, allowing microphone access, and closing other apps that might use the mic.';
+        return;
+      }
+
+      cam.snapshot().then((blob) => {
+        store.photoBlob = blob;
+      });
+      cam.setWave(true);
+      isRecording = true;
+      questionIdx = 0;
+      setHeadingText(TWIN_QUESTIONS[questionIdx], true);
+      flowBtn.textContent = 'Next';
+
+      elapsed = 0;
+      timerEl.textContent = '00:00';
+      recDot.style.display = '';
+      timerInterval = window.setInterval(() => {
+        elapsed++;
+        timerEl.textContent = formatTime(elapsed);
+      }, 1000);
+      return;
+    }
+
+    if (questionIdx < TWIN_QUESTIONS.length - 1) {
+      questionIdx++;
+      setHeadingText(TWIN_QUESTIONS[questionIdx], true);
+      flowBtn.textContent = questionIdx === TWIN_QUESTIONS.length - 1 ? 'Create your twin' : 'Next';
+      return;
+    }
+
+    flowBtn.setAttribute('disabled', '');
+
+    try {
+      const audioBlob = await recorder.stop();
+      store.audioBlob = audioBlob;
+    } catch {
+      flowBtn.removeAttribute('disabled');
+      errorBox.style.display = '';
+      errorBox.textContent =
+        'Could not finalize recording. Try again after closing other apps that may be using your microphone.';
+      return;
+    }
+
+    clearInterval(timerInterval);
+    recDot.style.display = 'none';
+    cam.setWave(false);
+    enterBirthing();
   });
 
   const wrapper = el(

@@ -10,12 +10,14 @@ export const store = {
   transactions: [],
   messages: [],
   mediaStream: null,
+  asciiTransitionBodyTime: null,
 };
 
 export function resetSession() {
   store.messages = [];
   store.photoBlob = null;
   store.audioBlob = null;
+  store.asciiTransitionBodyTime = null;
   if (store.mediaStream) {
     for (const track of store.mediaStream.getTracks()) track.stop();
   }
