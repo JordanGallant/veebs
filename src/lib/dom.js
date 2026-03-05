@@ -2,18 +2,11 @@ export function el(tag, attrs, ...children) {
   const element = document.createElement(tag);
   if (attrs) {
     for (const [key, value] of Object.entries(attrs)) {
-      if (key.startsWith('data-')) {
-        element.setAttribute(key, value);
-      } else if (key === 'class') {
-        element.className = value;
-      } else if (key === 'for') {
-        element.setAttribute('for', value);
-      } else {
-        element.setAttribute(key, value);
-      }
+      element.setAttribute(key, value);
     }
   }
   for (const child of children) {
+    if (child == null) continue;
     if (typeof child === 'string') {
       element.appendChild(document.createTextNode(child));
     } else {

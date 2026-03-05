@@ -1,6 +1,6 @@
 import { el, on, clear } from '../lib/dom.js';
 import { navigate, registerScreen } from '../lib/router.js';
-import { store, notify } from '../lib/store.js';
+import { store, resetSession } from '../lib/store.js';
 import { createChat } from '../components/chat.js';
 import { createCharacter } from '../components/character.js';
 import { createWallet } from '../components/wallet.js';
@@ -12,11 +12,25 @@ const TAB_LABELS = {
   connect: 'Connect',
 };
 
+let profileImageUrl = '';
+
 export function registerDashboard() {
-  registerScreen('dashboard', { render });
+  registerScreen('dashboard', {
+    render,
+    cleanup() {
+      if (!profileImageUrl) return;
+      URL.revokeObjectURL(profileImageUrl);
+      profileImageUrl = '';
+    },
+  });
 }
 
 function render(container) {
+  if (profileImageUrl) {
+    URL.revokeObjectURL(profileImageUrl);
+    profileImageUrl = '';
+  }
+
   const nameInput = document.createElement('input');
   nameInput.type = 'text';
   nameInput.className = 'editable-name';
@@ -25,10 +39,28 @@ function render(container) {
 
   on(nameInput, 'input', () => {
     store.name = nameInput.value;
-    notify();
   });
 
-  const header = el('div', { class: 'dashboard-header' }, nameInput);
+  const profileImage = el('img', {
+    class: 'profile-image',
+    src: getProfileImageSrc(),
+    alt: `${store.name} profile image`,
+    role: 'button',
+    tabindex: '0',
+    'aria-expanded': 'false',
+    title: 'Open profile image',
+    loading: 'eager',
+    decoding: 'async',
+  });
+  const header = el('div', { class: 'dashboard-header' }, profileImage, nameInput);
+  const profilePanelImage = el('img', {
+    class: 'profile-image-large',
+    src: profileImage.getAttribute('src'),
+    alt: `${store.name} profile image`,
+    loading: 'eager',
+    decoding: 'async',
+  });
+  const profilePanel = el('div', { class: 'profile-panel' }, profilePanelImage);
 
   const tabBar = el('div', { class: 'tabs' });
   const tabContent = el('div', { class: 'tab-content' });
@@ -36,6 +68,24 @@ function render(container) {
   const tabs = ['chat', 'wallet', 'connect'];
   let activeTab = 'chat';
   let settingsOpen = false;
+  let profileExpanded = false;
+
+  function toggleProfileExpanded() {
+    profileExpanded = !profileExpanded;
+    profileImage.setAttribute('aria-expanded', String(profileExpanded));
+    profileImage.setAttribute('title', profileExpanded ? 'Close profile image' : 'Open profile image');
+    profileImage.classList.toggle('profile-image--active', profileExpanded);
+    profilePanel.classList.toggle('profile-panel--open', profileExpanded);
+    dashboard.classList.toggle('dashboard--photo-expanded', profileExpanded);
+  }
+
+  on(profileImage, 'click', toggleProfileExpanded);
+  on(profileImage, 'keydown', (e) => {
+    if (e.key !== 'Enter' && e.key !== ' ') return;
+    e.preventDefault();
+    toggleProfileExpanded();
+  });
+  on(profilePanelImage, 'click', toggleProfileExpanded);
 
   function renderTabs() {
     clear(tabBar);
@@ -96,7 +146,7 @@ function render(container) {
     }
   }
 
-  const dashboard = el('div', { class: 'dashboard' }, header, tabBar, tabContent);
+  const dashboard = el('div', { class: 'dashboard' }, header, profilePanel, tabBar, tabContent);
   container.appendChild(dashboard);
 
   renderTabs();
@@ -120,17 +170,20 @@ function createSettings(parent) {
 
   const signOutBtn = el('button', { class: 'btn btn--danger', type: 'button' }, 'Sign out');
   on(signOutBtn, 'click', () => {
-    store.messages = [];
-    store.photoBlob = null;
-    store.audioBlob = null;
-    if (store.mediaStream) {
-      for (const track of store.mediaStream.getTracks()) track.stop();
-    }
-    store.mediaStream = null;
-    notify();
+    resetSession();
     navigate('welcome');
   });
 
   wrapper.append(characterSection, billingSection, signOutBtn);
   parent.appendChild(wrapper);
+}
+
+function getProfileImageSrc() {
+  if (store.photoBlob) {
+    profileImageUrl = URL.createObjectURL(store.photoBlob);
+    return profileImageUrl;
+  }
+
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 72 72"><rect width="72" height="72" rx="8" fill="currentColor" fill-opacity="0.08"/><circle cx="36" cy="28" r="12" fill="currentColor" fill-opacity="0.22"/><path d="M18 58c0-10 8-18 18-18s18 8 18 18" fill="currentColor" fill-opacity="0.22"/></svg>`;
+  return `data:image/svg+xml,${encodeURIComponent(svg)}`;
 }

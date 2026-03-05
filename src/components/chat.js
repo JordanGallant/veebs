@@ -1,5 +1,5 @@
 import { el, on, clear } from '../lib/dom.js';
-import { store, notify } from '../lib/store.js';
+import { store } from '../lib/store.js';
 
 const MOCK_REPLIES = [
   "That's interesting! Tell me more about that.",
@@ -36,7 +36,6 @@ export function createChat(parent) {
     if (!text) return;
 
     store.messages.push({ role: 'user', content: text });
-    notify();
     input.value = '';
     renderMessages();
 
@@ -45,7 +44,6 @@ export function createChat(parent) {
     setTimeout(() => {
       const reply = generateReply(text);
       store.messages.push({ role: 'twin', content: reply });
-      notify();
       renderMessages();
       sendBtn.removeAttribute('disabled');
     }, 600 + Math.random() * 800);

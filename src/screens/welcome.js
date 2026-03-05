@@ -1,17 +1,28 @@
 import { el, on } from '../lib/dom.js';
 import { navigate, registerScreen } from '../lib/router.js';
 import { store } from '../lib/store.js';
+import { createAsciiCamera } from '../components/ascii-camera.js';
+
+let cam = null;
 
 export function registerWelcome() {
-  registerScreen('welcome', { render });
+  registerScreen('welcome', {
+    render,
+    cleanup() {
+      if (cam) cam.stop();
+      cam = null;
+    },
+  });
 }
 
 function render(container) {
+  cam = createAsciiCamera();
+
   const heading = el('h1', { class: 'text-xl bold' }, 'Extract Your DNA');
 
   const subtitle = el(
     'p',
-    { class: 'secondary' },
+    { class: 'secondary', style: 'max-width:480px' },
     'CyberTwin needs access to your camera and microphone to capture your appearance and voice. This data creates the foundation for your digital twin.',
   );
 
@@ -31,7 +42,7 @@ function render(container) {
       });
       store.mediaStream = stream;
       navigate('recording');
-    } catch (err) {
+    } catch {
       btn.removeAttribute('disabled');
       btn.textContent = 'Allow Access';
       errorBox.style.display = '';
@@ -40,6 +51,15 @@ function render(container) {
     }
   });
 
-  const wrapper = el('div', { class: 'screen' }, heading, subtitle, errorBox, btn);
+  const content = el('div', { class: 'welcome-content' }, heading, subtitle, errorBox, btn);
+
+  const wrapper = el(
+    'div',
+    { class: 'screen welcome-screen' },
+    cam.el,
+    content,
+  );
+
   container.appendChild(wrapper);
+  cam.startBody();
 }

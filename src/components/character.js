@@ -1,5 +1,5 @@
 import { el, on } from '../lib/dom.js';
-import { store, notify } from '../lib/store.js';
+import { store } from '../lib/store.js';
 
 export function createCharacter(parent) {
   const heading = el('p', { class: 'secondary text-sm', style: 'padding-bottom:var(--space-sm)' },
@@ -16,7 +16,6 @@ export function createCharacter(parent) {
 
   on(editor, 'input', () => {
     store.characterProfile = editor.value;
-    notify();
   });
 
   const wrapper = el('div', { class: 'character-editor', style: 'display:flex;flex-direction:column;gap:var(--space-sm)' }, heading, label, editor);

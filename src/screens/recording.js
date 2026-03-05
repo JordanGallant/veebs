@@ -4,7 +4,18 @@ import { store } from '../lib/store.js';
 import { createAsciiCamera } from '../components/ascii-camera.js';
 import { createAudioRecorder } from '../components/audio-recorder.js';
 
+const BIRTHING_MESSAGES = [
+  'Analyzing voice patterns...',
+  'Mapping facial features...',
+  'Generating personality matrix...',
+  'Initializing neural pathways...',
+  'Calibrating empathy circuits...',
+  'Bootstrapping consciousness...',
+];
+
 let cam = null;
+let birthingMsgTimer = 0;
+let birthingNavTimer = 0;
 
 export function registerRecording() {
   registerScreen('recording', {
@@ -12,6 +23,8 @@ export function registerRecording() {
     cleanup() {
       if (cam) cam.stop();
       cam = null;
+      clearInterval(birthingMsgTimer);
+      clearTimeout(birthingNavTimer);
     },
   });
 }
@@ -29,12 +42,12 @@ function render(container) {
     return;
   }
 
-  cam = createAsciiCamera();
+  cam = createAsciiCamera({ mirror: true, rain: true });
 
   const prompt = el(
     'p',
     { class: 'secondary text-sm', style: 'max-width:480px' },
-    'Tell your twin about yourself: your hobbies, interests, and what duties you want them to handle for you.',
+    'Tell your twin about yourself: your hobbies, interests, and what duties you want your twin to handle for you.',
   );
 
   const recDot = el('span', { class: 'rec-dot', style: 'display:none' });
@@ -42,8 +55,13 @@ function render(container) {
   const recBtn = el('button', { class: 'btn' }, 'Start Recording');
   const controls = el('div', { class: 'rec-controls' }, recDot, timerEl, recBtn);
   const errorBox = el('p', { class: 'error', style: 'display:none' });
-
   const createBtn = el('button', { class: 'btn', style: 'display:none' }, 'Create Twin');
+
+  const recordingContent = el('div', { class: 'recording-content' }, prompt, controls, errorBox, createBtn);
+
+  const birthingHeading = el('h1', { class: 'text-xl bold' }, 'Birthing Your Twin...');
+  const birthingStatus = el('p', { class: 'birthing-status' }, BIRTHING_MESSAGES[0]);
+  const birthingContent = el('div', { class: 'birthing-content', style: 'display:none' }, birthingHeading, birthingStatus);
 
   let recorder = null;
   let timerInterval = 0;
@@ -94,18 +112,29 @@ function render(container) {
   });
 
   on(createBtn, 'click', () => {
-    if (cam) cam.stop();
-    cam = null;
-    navigate('birthing');
-  });
+    cam.beginBirthing();
+    recordingContent.style.display = 'none';
+    birthingContent.style.display = 'flex';
 
-  const content = el('div', { class: 'recording-content' }, prompt, controls, errorBox, createBtn);
+    let msgIdx = 0;
+    birthingMsgTimer = window.setInterval(() => {
+      msgIdx = (msgIdx + 1) % BIRTHING_MESSAGES.length;
+      birthingStatus.textContent = BIRTHING_MESSAGES[msgIdx];
+    }, 1200);
+
+    birthingNavTimer = window.setTimeout(() => {
+      if (cam) cam.stop();
+      cam = null;
+      navigate('dashboard');
+    }, 6000);
+  });
 
   const wrapper = el(
     'div',
     { class: 'screen recording-screen' },
     cam.el,
-    content,
+    recordingContent,
+    birthingContent,
   );
 
   container.appendChild(wrapper);
