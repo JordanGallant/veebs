@@ -29,6 +29,7 @@ const JITTER_CHANCE = 0.12;
 const BODY_STEP_MS = 82;
 const BODY_SAMPLES = 2;
 const BODY_MAX_STRETCH_DISTORTION = 1.35;
+const CAM_MAX_STRETCH_DISTORTION = BODY_MAX_STRETCH_DISTORTION;
 const BODY_BG_ABS_LUMA_CUTOFF = 18;
 const BODY_BG_REL_LUMA_CUTOFF = 0.16;
 const BODY_DETAIL_GAMMA = 0.72;
@@ -212,6 +213,33 @@ export function createAsciiCamera(opts = {}) {
     return blankBodyBuf;
   }
 
+  function drawSourceWithAspectPolicy(targetCtx, source, srcW, srcH, dstW, dstH, maxStretch, mirrorX = false) {
+    const srcAspect = srcW / srcH;
+    const dstAspect = dstW / dstH;
+    const distortion = srcAspect > dstAspect ? (srcAspect / dstAspect) : (dstAspect / srcAspect);
+
+    targetCtx.save();
+    if (mirrorX) {
+      targetCtx.translate(dstW, 0);
+      targetCtx.scale(-1, 1);
+    }
+
+    if (distortion <= maxStretch) {
+      // Fill the viewport first; only crop when stretch distortion gets too high.
+      targetCtx.drawImage(source, 0, 0, srcW, srcH, 0, 0, dstW, dstH);
+    } else if (srcAspect > dstAspect) {
+      const cropW = Math.max(1, Math.floor(srcH * dstAspect));
+      const cropX = Math.floor((srcW - cropW) * 0.5);
+      targetCtx.drawImage(source, cropX, 0, cropW, srcH, 0, 0, dstW, dstH);
+    } else {
+      const cropH = Math.max(1, Math.floor(srcW / dstAspect));
+      const cropY = Math.floor((srcH - cropH) * 0.5);
+      targetCtx.drawImage(source, 0, cropY, srcW, cropH, 0, 0, dstW, dstH);
+    }
+
+    targetCtx.restore();
+  }
+
   function buildBodyFrameFromVideo() {
     if (!cols || !totalRows || !bodyCtx || bodyVideo.readyState < 2) return null;
 
@@ -229,22 +257,15 @@ export function createAsciiCamera(opts = {}) {
 
     const srcW = Math.max(1, bodyVideo.videoWidth || 1);
     const srcH = Math.max(1, bodyVideo.videoHeight || 1);
-    const srcAspect = srcW / srcH;
-    const dstAspect = sampleW / sampleH;
-    const distortion = srcAspect > dstAspect ? (srcAspect / dstAspect) : (dstAspect / srcAspect);
-
-    if (distortion <= BODY_MAX_STRETCH_DISTORTION) {
-      // Fill the entire viewport first; only switch to crop when stretching gets excessive.
-      bodyCtx.drawImage(bodyVideo, 0, 0, srcW, srcH, 0, 0, sampleW, sampleH);
-    } else if (srcAspect > dstAspect) {
-      const cropW = Math.max(1, Math.floor(srcH * dstAspect));
-      const cropX = Math.floor((srcW - cropW) * 0.5);
-      bodyCtx.drawImage(bodyVideo, cropX, 0, cropW, srcH, 0, 0, sampleW, sampleH);
-    } else {
-      const cropH = Math.max(1, Math.floor(srcW / dstAspect));
-      const cropY = Math.floor((srcH - cropH) * 0.5);
-      bodyCtx.drawImage(bodyVideo, 0, cropY, srcW, cropH, 0, 0, sampleW, sampleH);
-    }
+    drawSourceWithAspectPolicy(
+      bodyCtx,
+      bodyVideo,
+      srcW,
+      srcH,
+      sampleW,
+      sampleH,
+      BODY_MAX_STRETCH_DISTORTION,
+    );
 
     const { data } = bodyCtx.getImageData(0, 0, sampleW, sampleH);
     const n = cols * totalRows;
@@ -380,13 +401,18 @@ export function createAsciiCamera(opts = {}) {
   function drawRecording(now) {
     if (!cols || !camRows) return;
 
-    if (mirror) {
-      ctx.setTransform(-1, 0, 0, 1, cols, 0);
-      ctx.drawImage(video, 0, 0, cols, camRows);
-      ctx.setTransform(1, 0, 0, 1, 0, 0);
-    } else {
-      ctx.drawImage(video, 0, 0, cols, camRows);
-    }
+    const srcW = Math.max(1, video.videoWidth || cols);
+    const srcH = Math.max(1, video.videoHeight || camRows);
+    drawSourceWithAspectPolicy(
+      ctx,
+      video,
+      srcW,
+      srcH,
+      cols,
+      camRows,
+      CAM_MAX_STRETCH_DISTORTION,
+      mirror,
+    );
 
     const { data } = ctx.getImageData(0, 0, cols, camRows);
     const camN = cols * camRows;
