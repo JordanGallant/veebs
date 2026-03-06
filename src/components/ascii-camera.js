@@ -35,6 +35,9 @@ const BODY_BG_REL_LUMA_CUTOFF = 0.16;
 const BODY_DETAIL_GAMMA = 0.72;
 const BODY_VIDEO_REV = 'gray20-960-crf30';
 const BODY_VIDEO_URL = new URL(`../../assets/cybertwin.m4v?v=${BODY_VIDEO_REV}`, import.meta.url).href;
+const BODY_VIDEO_MOBILE_URL = new URL(`../../assets/cybertwin-mobile.mp4?v=${BODY_VIDEO_REV}`, import.meta.url).href;
+const BODY_ASCII_FALLBACK_URL = new URL(`../../assets/cybertwin-ascii.bin?v=${BODY_VIDEO_REV}`, import.meta.url).href;
+const BODY_VIDEO_BOOT_TIMEOUT_MS = 1800;
 
 function detectLightBg() {
   const div = document.createElement('div');
@@ -64,8 +67,10 @@ export function createAsciiCamera(opts = {}) {
   const ctx = cvs.getContext('2d', { willReadFrequently: true });
 
   const bodyVideo = document.createElement('video');
-  bodyVideo.src = BODY_VIDEO_URL;
   bodyVideo.playsInline = true;
+  bodyVideo.setAttribute('playsinline', '');
+  bodyVideo.setAttribute('webkit-playsinline', '');
+  bodyVideo.autoplay = true;
   bodyVideo.muted = true;
   bodyVideo.loop = true;
   bodyVideo.preload = 'auto';
@@ -104,15 +109,188 @@ export function createAsciiCamera(opts = {}) {
   let bodyBuf = null;
   let blankBodyBuf = null;
   let bodyFailed = false;
+  let bodyVideoReady = false;
+  let bodyVideoBootStart = 0;
+  let bodyPrimarySrc = '';
+  let bodyAltSrc = '';
+  let bodyTriedAlt = false;
+  let bodyUseFallback = false;
+  let fallbackWarned = false;
+  let bodyFallback = null;
+  let bodyFallbackPromise = null;
+  let bodyFallbackStartMs = 0;
   let bodySampleW = 0;
   let bodySampleH = 0;
   let lastBodyT = 0;
   let printInStart = 0;
   let printSourceBuf = null;
 
-  bodyVideo.addEventListener('error', () => {
-    bodyFailed = true;
+  bodyVideo.addEventListener('loadeddata', () => {
+    bodyVideoReady = true;
+    bodyFailed = false;
+    bodyUseFallback = false;
+    bodyFallbackStartMs = 0;
   });
+
+  bodyVideo.addEventListener('error', () => {
+    if (!bodyTriedAlt && bodyAltSrc && bodyVideo.currentSrc !== bodyAltSrc) {
+      bodyTriedAlt = true;
+      bodyVideoReady = false;
+      bodyVideo.src = bodyAltSrc;
+      bodyVideo.load();
+      ensureBodyVideoPlayback();
+      return;
+    }
+    bodyFailed = true;
+    ensureBodyAsciiFallback();
+  });
+
+  function configureBodyVideoSource() {
+    const isNarrow = window.matchMedia && window.matchMedia('(max-width: 900px)').matches;
+    bodyPrimarySrc = isNarrow ? BODY_VIDEO_MOBILE_URL : BODY_VIDEO_URL;
+    bodyAltSrc = isNarrow ? BODY_VIDEO_URL : BODY_VIDEO_MOBILE_URL;
+    bodyTriedAlt = false;
+    bodyVideoReady = false;
+    bodyFailed = false;
+    bodyUseFallback = false;
+    bodyVideoBootStart = performance.now();
+    bodyVideo.src = bodyPrimarySrc;
+    bodyVideo.load();
+  }
+
+  function parseAsciiFallbackBin(buffer) {
+    const view = new DataView(buffer);
+    const sig = String.fromCharCode(
+      view.getUint8(0),
+      view.getUint8(1),
+      view.getUint8(2),
+      view.getUint8(3),
+    );
+    if (sig !== 'ASCI') throw new Error('Invalid ASCII fallback signature');
+    const version = view.getUint8(4);
+    if (version !== 1) throw new Error(`Unsupported ASCII fallback version: ${version}`);
+    const width = view.getUint16(5, true);
+    const height = view.getUint16(7, true);
+    const fps = view.getUint16(9, true);
+    const frameCount = view.getUint32(11, true);
+    const charLen = view.getUint16(15, true);
+    if (charLen !== CHARS.length) throw new Error('ASCII fallback charset length mismatch');
+
+    const frameSize = width * height;
+    const frames = new Array(frameCount);
+    let off = 17;
+    for (let f = 0; f < frameCount; f++) {
+      if (off + 4 > view.byteLength) throw new Error('Malformed ASCII fallback frame header');
+      const payloadLen = view.getUint32(off, true);
+      off += 4;
+      const end = off + payloadLen;
+      if (end > view.byteLength) throw new Error('Malformed ASCII fallback frame payload');
+      const frame = new Uint8Array(frameSize);
+      let write = 0;
+      while (off + 3 <= end) {
+        const run = view.getUint16(off, true);
+        const value = view.getUint8(off + 2);
+        off += 3;
+        if (run <= 0) throw new Error('Invalid run length in ASCII fallback');
+        frame.fill(value, write, write + run);
+        write += run;
+      }
+      if (off !== end || write !== frameSize) throw new Error('Corrupt ASCII fallback frame');
+      frames[f] = frame;
+    }
+    return { width, height, fps, frames };
+  }
+
+  async function ensureBodyAsciiFallback() {
+    if (bodyFallback || bodyFallbackPromise) return bodyFallbackPromise;
+    bodyFallbackPromise = fetch(BODY_ASCII_FALLBACK_URL, { cache: 'force-cache' })
+      .then(r => {
+        if (!r.ok) throw new Error(`Fallback fetch failed: ${r.status}`);
+        return r.arrayBuffer();
+      })
+      .then(parseAsciiFallbackBin)
+      .then(data => {
+        bodyFallback = data;
+        return data;
+      })
+      .catch(() => {
+        bodyFallback = null;
+        bodyFallbackPromise = null;
+        return null;
+      });
+    return bodyFallbackPromise;
+  }
+
+  function shouldUseBodyFallback(now) {
+    if (bodyUseFallback) return true;
+    if (bodyFailed) {
+      ensureBodyAsciiFallback();
+      if (bodyFallback) bodyUseFallback = true;
+      return bodyUseFallback;
+    }
+    if (!bodyVideoReady && bodyVideoBootStart && (now - bodyVideoBootStart) > BODY_VIDEO_BOOT_TIMEOUT_MS) {
+      if (!fallbackWarned) {
+        fallbackWarned = true;
+        ensureBodyAsciiFallback();
+      }
+      if (bodyFallback) bodyUseFallback = true;
+    }
+    return bodyUseFallback;
+  }
+
+  function buildBodyFrameFromFallback(now) {
+    if (!cols || !totalRows || !bodyFallback || !bodyFallback.frames.length) return null;
+    if (!bodyFallbackStartMs) bodyFallbackStartMs = now;
+
+    const t = (now - bodyFallbackStartMs) / 1000;
+    const frameIdx = Math.floor(t * bodyFallback.fps) % bodyFallback.frames.length;
+    const src = bodyFallback.frames[frameIdx];
+    const srcW = bodyFallback.width;
+    const srcH = bodyFallback.height;
+    const dstW = cols;
+    const dstH = totalRows;
+
+    const srcAspect = srcW / srcH;
+    const dstAspect = dstW / dstH;
+    const distortion = srcAspect > dstAspect ? (srcAspect / dstAspect) : (dstAspect / srcAspect);
+
+    let cropX = 0;
+    let cropY = 0;
+    let cropW = srcW;
+    let cropH = srcH;
+    if (distortion > BODY_MAX_STRETCH_DISTORTION) {
+      if (srcAspect > dstAspect) {
+        cropW = Math.max(1, Math.floor(srcH * dstAspect));
+        cropX = Math.floor((srcW - cropW) * 0.5);
+      } else {
+        cropH = Math.max(1, Math.floor(srcW / dstAspect));
+        cropY = Math.floor((srcH - cropH) * 0.5);
+      }
+    }
+
+    const out = new Array(dstW * dstH);
+    for (let y = 0; y < dstH; y++) {
+      const sy = Math.min(
+        srcH - 1,
+        cropY + Math.floor(((y + 0.5) / dstH) * cropH),
+      );
+      const rowOut = y * dstW;
+      const rowSrc = sy * srcW;
+      for (let x = 0; x < dstW; x++) {
+        const sx = Math.min(
+          srcW - 1,
+          cropX + Math.floor(((x + 0.5) / dstW) * cropW),
+        );
+        out[rowOut + x] = CHARS[src[rowSrc + sx]] || CHARS[0];
+      }
+    }
+    return out;
+  }
+
+  function setBodyFallbackTime(seconds) {
+    if (!Number.isFinite(seconds)) return;
+    bodyFallbackStartMs = performance.now() - Math.max(0, seconds) * 1000;
+  }
 
   function measure() {
     const style = window.getComputedStyle(pre);
@@ -345,12 +523,23 @@ export function createAsciiCamera(opts = {}) {
     rafId = requestAnimationFrame(draw);
   }
 
+  function getNextHelixFrame(now) {
+    const frames = ensureHelix();
+    if (!lastHelixT) lastHelixT = now;
+    if (now - lastHelixT >= HELIX_STEP_MS) {
+      helixIdx = (helixIdx + 1) % frames.length;
+      lastHelixT = now;
+    }
+    return frames[helixIdx];
+  }
+
   function drawBody(now) {
     if (!cols || !totalRows) return;
 
+    const useFallback = shouldUseBodyFallback(now);
     ensureBodyVideoPlayback();
     if (!lastBodyT || now - lastBodyT >= BODY_STEP_MS) {
-      const next = buildBodyFrameFromVideo();
+      const next = useFallback ? buildBodyFrameFromFallback(now) : buildBodyFrameFromVideo();
       if (next) bodyBuf = next;
       lastBodyT = now;
     }
@@ -559,9 +748,10 @@ export function createAsciiCamera(opts = {}) {
 
     let fromBuf = ensureBlankBody();
     if (printInStart) {
+      const useFallback = shouldUseBodyFallback(now);
       ensureBodyVideoPlayback();
       if (!lastBodyT || now - lastBodyT >= BODY_STEP_MS) {
-        const next = buildBodyFrameFromVideo();
+        const next = useFallback ? buildBodyFrameFromFallback(now) : buildBodyFrameFromVideo();
         if (next) printSourceBuf = next;
         lastBodyT = now;
       }
@@ -602,15 +792,7 @@ export function createAsciiCamera(opts = {}) {
 
   function drawHelix(now) {
     if (!cols || !totalRows) return;
-    const frames = ensureHelix();
-
-    if (!lastHelixT) lastHelixT = now;
-    if (now - lastHelixT >= HELIX_STEP_MS) {
-      helixIdx = (helixIdx + 1) % frames.length;
-      lastHelixT = now;
-    }
-
-    flushBuf(frames[helixIdx]);
+    flushBuf(getNextHelixFrame(now));
   }
 
   return {
@@ -623,7 +805,12 @@ export function createAsciiCamera(opts = {}) {
       printSourceBuf = null;
       bodyBuf = null;
       blankBodyBuf = null;
+      bodyFallbackStartMs = 0;
       lastBodyT = 0;
+      configureBodyVideoSource();
+      if (window.matchMedia && window.matchMedia('(max-width: 900px)').matches) {
+        ensureBodyAsciiFallback();
+      }
       try { bodyVideo.currentTime = 0; } catch {}
       ensureBodyVideoPlayback();
       resize();
@@ -639,10 +826,13 @@ export function createAsciiCamera(opts = {}) {
       printInStart = performance.now();
       printSourceBuf = null;
       bodyBuf = null;
+      bodyFallbackStartMs = 0;
       lastBodyT = 0;
+      if (!bodyVideo.src) configureBodyVideoSource();
       if (transitionBodyTime !== null) {
         const seekToTransitionTime = () => {
           try { bodyVideo.currentTime = transitionBodyTime; } catch {}
+          setBodyFallbackTime(transitionBodyTime);
         };
         if (bodyVideo.readyState >= 1) seekToTransitionTime();
         else bodyVideo.addEventListener('loadedmetadata', seekToTransitionTime, { once: true });
@@ -736,6 +926,15 @@ export function createAsciiCamera(opts = {}) {
       blankBodyBuf = null;
       printInStart = 0;
       printSourceBuf = null;
+      bodyVideoReady = false;
+      bodyVideoBootStart = 0;
+      bodyPrimarySrc = '';
+      bodyAltSrc = '';
+      bodyTriedAlt = false;
+      bodyUseFallback = false;
+      bodyFailed = false;
+      fallbackWarned = false;
+      bodyFallbackStartMs = 0;
     },
 
     setWave(on) { waveOn = on; if (!on) smoothVolume = 0; },
@@ -749,6 +948,10 @@ export function createAsciiCamera(opts = {}) {
     },
 
     captureBodyVideoTime() {
+      if (bodyFallback && bodyFallbackStartMs) {
+        const t = (performance.now() - bodyFallbackStartMs) / 1000;
+        return Number.isFinite(t) ? t : null;
+      }
       if (bodyFailed) return null;
       const t = bodyVideo.currentTime;
       return Number.isFinite(t) ? t : null;
