@@ -28,7 +28,8 @@ if (urlParams.get('payment') === 'success') {
       localStorage.removeItem('ct_pending_plan');
       store.selectedPlan = pendingPlan;
       store.pendingTwinBirth = true;
-      window.location.hash = 'birthing';
+      // Go to welcome to get camera access, then recording → birthing
+      window.location.hash = 'welcome';
     } else {
       window.location.hash = 'dashboard';
     }

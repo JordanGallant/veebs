@@ -193,7 +193,12 @@ function render(container) {
     recordingPanel.classList.remove('is-visible');
     recordingPanel.classList.add('is-exiting');
     pricingNavTimer = window.setTimeout(() => {
-      navigate(store.token ? 'pricing' : 'auth');
+      if (store.pendingTwinBirth) {
+        // Already paid (returning from Stripe) — go straight to birthing
+        navigate('birthing');
+      } else {
+        navigate(store.token ? 'pricing' : 'auth');
+      }
     }, 420);
   });
 

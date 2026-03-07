@@ -32,7 +32,8 @@ export function registerWelcome() {
 
 function render(container) {
   // Auto-restore session — skip to dashboard if already logged in
-  if (restoreSession()) {
+  // But if pendingTwinBirth is set (returning from Stripe), continue onboarding
+  if (restoreSession() && !store.pendingTwinBirth) {
     navigate('dashboard');
     return;
   }
