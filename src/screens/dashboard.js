@@ -1,7 +1,7 @@
 import { el, on, clear } from '../lib/dom.js';
 import { navigate, registerScreen } from '../lib/router.js';
 import { store, resetSession } from '../lib/store.js';
-import { logout } from '../lib/api.js';
+import { logout, getProfileImage } from '../lib/api.js';
 import { createChat } from '../components/chat.js';
 import { createCharacter } from '../components/character.js';
 import { createWallet } from '../components/wallet.js';
@@ -174,6 +174,17 @@ function render(container) {
     speed: 30,
     swap: false,
   });
+
+  // Load persisted profile image from API if we don't have one in memory
+  if (!store.photoUrl && !store.photoBlob) {
+    getProfileImage().then((url) => {
+      if (url) {
+        store.photoUrl = url;
+        profileImage.src = url;
+        profilePanelImage.src = url;
+      }
+    }).catch(() => {});
+  }
 }
 
 function createSettings(parent) {
