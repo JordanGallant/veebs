@@ -3,6 +3,8 @@ import { navigate, registerScreen, getAsciiLayer } from '../lib/router.js';
 import { store } from '../lib/store.js';
 import { createAsciiCamera } from '../components/ascii-camera.js';
 import { animateTypewriter } from '../lib/typewriter.js';
+import { createCyborgPortraitFromSnapshot } from '../lib/fal-edit.js';
+import { saveProfileImage } from '../lib/api.js';
 
 const BIRTHING_MESSAGES = [
   'Analyzing voice patterns...',
@@ -10,6 +12,7 @@ const BIRTHING_MESSAGES = [
   'Generating personality matrix...',
   'Initializing neural pathways...',
   'Calibrating empathy circuits...',
+  'Generating cyborg portrait...',
   'Bootstrapping consciousness...',
 ];
 
@@ -17,7 +20,6 @@ let cam = null;
 let revealTimer = 0;
 let startTimer = 0;
 let msgTimer = 0;
-let navTimer = 0;
 let exitTimer = 0;
 let stopHeadingType = null;
 
@@ -33,12 +35,37 @@ export function registerBirthing() {
       clearTimeout(revealTimer);
       clearTimeout(startTimer);
       clearInterval(msgTimer);
-      clearTimeout(navTimer);
       clearTimeout(exitTimer);
       if (stopHeadingType) stopHeadingType();
       stopHeadingType = null;
     },
   });
+}
+
+async function generateAndSavePortrait(status) {
+  // Use the photo taken during recording
+  const photoBlob = store.photoBlob;
+  if (!photoBlob) return;
+
+  try {
+    status.textContent = 'Generating cyborg portrait...';
+    const result = await createCyborgPortraitFromSnapshot(photoBlob);
+
+    if (result?.imageUrl) {
+      // Save the fal-generated image URL to the agent in the DB
+      store.photoUrl = result.imageUrl;
+      store.photoBlob = result.blob || null;
+
+      try {
+        await saveProfileImage(result.imageUrl);
+      } catch (err) {
+        console.warn('Could not persist profile image:', err.message);
+      }
+    }
+  } catch (err) {
+    console.warn('Portrait generation failed:', err.message);
+    // Continue anyway — user keeps their original photo
+  }
 }
 
 function render(container) {
@@ -84,12 +111,20 @@ function render(container) {
     status.textContent = BIRTHING_MESSAGES[msgIdx];
   }, 1200);
 
-  navTimer = window.setTimeout(() => {
+  // Fire portrait generation + persist to DB (runs in background)
+  // Wait for it to complete before navigating
+  const portraitPromise = generateAndSavePortrait(status);
+
+  // Wait at least 5.6s for the animation, then wait for portrait if still running
+  const minWait = new Promise((r) => setTimeout(r, 5600));
+
+  Promise.all([minWait, portraitPromise]).then(() => {
+    clearInterval(msgTimer);
     panel.classList.remove('is-visible');
     panel.classList.add('is-exiting');
     exitTimer = window.setTimeout(() => {
       store.pendingTwinBirth = false;
-      navigate('verify-email');
+      navigate('dashboard');
     }, 420);
-  }, 5600);
+  });
 }
