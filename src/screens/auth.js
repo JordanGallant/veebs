@@ -50,7 +50,7 @@ function render(container) {
   const nameInput = el('input', {
     class: 'input',
     type: 'text',
-    placeholder: 'Display name',
+    placeholder: 'twin name',
     autocomplete: 'name',
   });
 
