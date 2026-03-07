@@ -4,8 +4,6 @@ import { store } from '../lib/store.js';
 import { createAsciiCamera } from '../components/ascii-camera.js';
 import { createAudioRecorder } from '../components/audio-recorder.js';
 import { animateTypewriter } from '../lib/typewriter.js';
-import { createCyborgPortraitFromSnapshot } from '../lib/fal-edit.js';
-
 const TWIN_QUESTIONS = [
   'What are your goals in life?',
   'Which hobbies and interests shape who you are?',
@@ -16,7 +14,6 @@ const TWIN_QUESTIONS = [
 let cam = null;
 let pricingNavTimer = 0;
 let stopQuestionType = null;
-const PHOTO_EDIT_WAIT_TIMEOUT_MS = 120000;
 
 export function registerRecording() {
   registerScreen('recording', {
@@ -38,15 +35,6 @@ function formatTime(seconds) {
   const m = Math.floor(seconds / 60).toString().padStart(2, '0');
   const s = (seconds % 60).toString().padStart(2, '0');
   return `${m}:${s}`;
-}
-
-function waitWithTimeout(promise, timeoutMs) {
-  return Promise.race([
-    promise,
-    new Promise((resolve) => {
-      window.setTimeout(resolve, timeoutMs);
-    }),
-  ]);
 }
 
 function render(container) {
@@ -150,31 +138,13 @@ function render(container) {
         return;
       }
 
-      store.photoEditPending = true;
-      store.photoEditError = null;
-      store.photoEditPromise = cam.snapshot()
-        .then((blob) => {
-          if (!blob) throw new Error('Could not capture snapshot.');
+      // Just capture snapshot — cyborg generation happens in birthing (after payment)
+      cam.snapshot().then((blob) => {
+        if (blob) {
           store.photoBlob = blob;
           store.photoUrl = null;
-          return createCyborgPortraitFromSnapshot(blob);
-        })
-        .then((editedResult) => {
-          if (editedResult?.blob) {
-            store.photoBlob = editedResult.blob;
-            store.photoUrl = null;
-          } else if (editedResult?.imageUrl) {
-            store.photoBlob = null;
-            store.photoUrl = editedResult.imageUrl;
-          }
-          store.photoEditPending = false;
-          return editedResult;
-        })
-        .catch((err) => {
-          store.photoEditPending = false;
-          store.photoEditError = err instanceof Error ? err.message : 'Could not generate portrait.';
-          return null;
-        });
+        }
+      });
       cam.setWave(true);
       isRecording = true;
       questionIdx = 0;
@@ -214,17 +184,6 @@ function render(container) {
     clearInterval(timerInterval);
     recDot.style.display = 'none';
     cam.setWave(false);
-
-    if (store.photoEditPromise) {
-      errorBox.style.display = '';
-      errorBox.textContent = 'Finalizing portrait...';
-      await waitWithTimeout(store.photoEditPromise, PHOTO_EDIT_WAIT_TIMEOUT_MS);
-      if (store.photoEditError) {
-        errorBox.textContent = `Photo edit failed: ${store.photoEditError}. Continuing with your original snapshot.`;
-      } else {
-        errorBox.style.display = 'none';
-      }
-    }
 
     if (store.mediaStream) {
       for (const track of store.mediaStream.getTracks()) track.stop();
