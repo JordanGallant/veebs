@@ -196,6 +196,10 @@ function render(container) {
       if (store.pendingTwinBirth) {
         // Already paid (returning from Stripe) — go straight to birthing
         navigate('birthing');
+      } else if (store.token && store.agentId) {
+        // Existing user re-doing onboarding — skip to birthing
+        store.pendingTwinBirth = true;
+        navigate('birthing');
       } else {
         navigate(store.token ? 'pricing' : 'auth');
       }
