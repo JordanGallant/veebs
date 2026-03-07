@@ -178,12 +178,12 @@ export async function getProfileImage() {
 
 // ── Stripe Checkout ──
 
-export async function createCheckout(amountUsd) {
+export async function createCheckout(amountUsd, { embedded = false } = {}) {
   const agentId = store.agentId;
   const res = await fetch(`${API_BASE}/api/checkout`, {
     method: 'POST',
     headers: authHeaders(),
-    body: JSON.stringify({ agentId, amountUsd, chain: 'solana', returnUrl: window.location.origin }),
+    body: JSON.stringify({ agentId, amountUsd, chain: 'solana', returnUrl: window.location.origin, embedded }),
   });
   const data = await res.json();
   if (!res.ok) throw new Error(data.error || `Checkout failed (${res.status})`);

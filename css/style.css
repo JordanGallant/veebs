@@ -735,6 +735,22 @@ a {
   font-family: var(--font);
 }
 
+.stripe-embed-wrap {
+  position: relative;
+  width: 100%;
+  max-width: 600px;
+  margin: 0 auto;
+  padding: var(--space-md);
+}
+
+.stripe-embed-back {
+  margin-bottom: var(--space-sm);
+}
+
+.stripe-embed {
+  min-height: 300px;
+}
+
 .verify-panel {
   width: min(520px, 100%);
   align-items: stretch;

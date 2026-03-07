@@ -149,11 +149,25 @@ function render(container) {
     }, 420);
   });
 
+  function proceedToBirthing() {
+    store.pendingTwinBirth = true;
+    panel.classList.remove('is-visible');
+    panel.classList.add('is-exiting');
+    // Also hide checkout embed if visible
+    const embedEl = wrapper.querySelector('.stripe-embed');
+    if (embedEl) embedEl.style.display = 'none';
+    setTimeout(() => {
+      store.asciiTransitionBodyTime = cam ? cam.captureBodyVideoTime() : null;
+      navigate('birthing');
+    }, 420);
+  }
+
   on(submitBtn, 'click', async () => {
     if (!selectedOption) return;
 
     submitBtn.setAttribute('disabled', '');
-    status.textContent = 'Redirecting to payment...';
+    skipBtn.setAttribute('disabled', '');
+    status.textContent = 'Loading payment...';
 
     // Store plan info
     store.selectedPlan = selectedOption.id;
@@ -175,23 +189,69 @@ function render(container) {
     }
 
     try {
-      const checkout = await createCheckout(selectedOption.amountUsd);
-      if (checkout.checkout_url) {
+      const checkout = await createCheckout(selectedOption.amountUsd, { embedded: true });
+      if (checkout.client_secret && checkout.publishable_key) {
+        // Load Stripe.js if not already loaded
+        if (!window.Stripe) {
+          await new Promise((resolve, reject) => {
+            const s = document.createElement('script');
+            s.src = 'https://js.stripe.com/v3/';
+            s.onload = resolve;
+            s.onerror = () => reject(new Error('Failed to load Stripe'));
+            document.head.appendChild(s);
+          });
+        }
+
+        // Hide the pricing panel, show embedded checkout
+        panel.style.display = 'none';
+
+        const checkoutDiv = el('div', { class: 'stripe-embed' });
+        const backBtn = el('button', { class: 'btn btn--secondary stripe-embed-back', type: 'button' }, '← Back');
+        const embedWrap = el('div', { class: 'stripe-embed-wrap' }, backBtn, checkoutDiv);
+        content.appendChild(embedWrap);
+
+        on(backBtn, 'click', () => {
+          embedWrap.remove();
+          panel.style.display = '';
+          submitBtn.removeAttribute('disabled');
+          skipBtn.removeAttribute('disabled');
+          status.textContent = '';
+        });
+
+        const stripe = window.Stripe(checkout.publishable_key);
+        const stripeCheckout = await stripe.initEmbeddedCheckout({
+          clientSecret: checkout.client_secret,
+        });
+        stripeCheckout.mount(checkoutDiv);
+
+        // Poll for completion (Stripe embedded fires return_url but we intercept)
+        const pollInterval = setInterval(async () => {
+          try {
+            const session = await fetch(
+              `https://agents.jgsleepy.xyz/api/checkout/status?session_id=${checkout.session_id}`,
+              { headers: { 'Authorization': `Bearer ${store.token}` } }
+            );
+            const data = await session.json();
+            if (data.status === 'complete') {
+              clearInterval(pollInterval);
+              stripeCheckout.destroy();
+              embedWrap.remove();
+              proceedToBirthing();
+            }
+          } catch {}
+        }, 2000);
+      } else if (checkout.checkout_url) {
+        // Fallback to redirect if embedded not available
         localStorage.setItem('ct_pending_plan', selectedOption.id);
         window.location.href = checkout.checkout_url;
       } else {
         // Stripe not configured — skip payment
-        store.pendingTwinBirth = true;
-        panel.classList.remove('is-visible');
-        panel.classList.add('is-exiting');
-        setTimeout(() => {
-          store.asciiTransitionBodyTime = cam ? cam.captureBodyVideoTime() : null;
-          navigate('birthing');
-        }, 420);
+        proceedToBirthing();
       }
     } catch (err) {
       status.textContent = err.message;
       submitBtn.removeAttribute('disabled');
+      skipBtn.removeAttribute('disabled');
     }
   });
 
