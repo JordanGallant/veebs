@@ -3,7 +3,7 @@ import { navigate, registerScreen, getAsciiLayer } from '../lib/router.js';
 import { store } from '../lib/store.js';
 import { createAsciiCamera } from '../components/ascii-camera.js';
 import { animateTypewriter } from '../lib/typewriter.js';
-import { register, login } from '../lib/api.js';
+import { register, login, loadOrCreateAgent } from '../lib/api.js';
 
 let cam = null;
 let revealTimer = 0;
@@ -101,6 +101,11 @@ function render(container) {
         await register(email, password, displayName || 'CyberTwin User');
       }
 
+      // Load existing agent or create a new one
+      status.textContent = 'Setting up your agent...';
+      const agentName = displayName || store.name || 'My Twin';
+      await loadOrCreateAgent(agentName, store.characterProfile);
+
       status.textContent = 'Success! Redirecting...';
       panel.classList.remove('is-visible');
       panel.classList.add('is-exiting');
@@ -115,8 +120,14 @@ function render(container) {
         }
       }, 420);
     } catch (err) {
-      status.textContent = err.message;
       submitBtn.removeAttribute('disabled');
+      if (!isLogin && err.message.toLowerCase().includes('already')) {
+        isLogin = true;
+        updateMode();
+        status.textContent = 'Account already exists — sign in instead.';
+      } else {
+        status.textContent = err.message;
+      }
     }
   }
 
