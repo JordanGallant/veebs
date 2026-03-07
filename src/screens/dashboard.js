@@ -201,6 +201,10 @@ function createSettings(parent) {
 }
 
 function getProfileImageSrc() {
+  if (store.photoUrl) {
+    return store.photoUrl;
+  }
+
   if (store.photoBlob) {
     profileImageUrl = URL.createObjectURL(store.photoBlob);
     return profileImageUrl;

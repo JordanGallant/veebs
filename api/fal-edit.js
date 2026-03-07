@@ -1,4 +1,5 @@
-const MODEL_URL = 'https://fal.run/fal-ai/flux-2/flash/edit';
+const EDIT_MODEL_ID = 'fal-ai/flux-2/flash/edit';
+const REMOVE_BG_MODEL_ID = 'fal-ai/imageutils/rembg';
 
 const CYBORG_PROMPT =
   'make this person into a beautiful yet terrifying cyborg, shiny sharp silver parts. face and demeanor stay perfectly intact. looking directly into the camera, in an intense and charming way. match clothing and style of input image. ensure face of main subject on input stays the same in output. remove the background. ensure the face stays the same as refrence image.';
@@ -21,6 +22,31 @@ function parseBody(req) {
   return req.body;
 }
 
+function dataUrlToBuffer(dataUrl) {
+  const match = /^data:([^;,]+)?(;base64)?,(.*)$/.exec(dataUrl);
+  if (!match) {
+    throw new Error('Invalid image data URL.');
+  }
+
+  const mimeType = match[1] || 'application/octet-stream';
+  const isBase64 = Boolean(match[2]);
+  const payload = match[3] || '';
+  const buffer = isBase64
+    ? Buffer.from(payload, 'base64')
+    : Buffer.from(decodeURIComponent(payload), 'utf8');
+  return { mimeType, buffer };
+}
+
+function extractError(err) {
+  const msg =
+    err?.body?.detail?.[0]?.msg ||
+    err?.body?.detail ||
+    err?.body?.error ||
+    err?.message ||
+    'Fal API returned an error.';
+  return String(msg);
+}
+
 module.exports = async function handler(req, res) {
   if (req.method !== 'POST') {
     res.setHeader('Allow', 'POST');
@@ -41,46 +67,80 @@ module.exports = async function handler(req, res) {
     return sendJson(res, 500, { error: 'Server is missing FAL_KEY.' });
   }
 
-  let falRes;
+  let fal;
   try {
-    falRes = await fetch(MODEL_URL, {
-      method: 'POST',
-      headers: {
-        Authorization: `Key ${apiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
+    ({ fal } = await import('@fal-ai/client'));
+  } catch {
+    return sendJson(res, 500, { error: 'Could not load @fal-ai/client.' });
+  }
+
+  fal.config({ credentials: apiKey });
+
+  let editResult;
+  try {
+    let inputImageUrl = imageDataUrl;
+    try {
+      const { mimeType, buffer } = dataUrlToBuffer(imageDataUrl);
+      const imageBlob = new Blob([buffer], { type: mimeType });
+      inputImageUrl = await fal.storage.upload(imageBlob);
+    } catch {
+      // Fallback to inline data URL if upload fails.
+      inputImageUrl = imageDataUrl;
+    }
+
+    editResult = await fal.subscribe(EDIT_MODEL_ID, {
+      input: {
         prompt: CYBORG_PROMPT,
-        image_url: imageDataUrl,
+        image_urls: [inputImageUrl],
         output_format: 'png',
-        safety_tolerance: '2',
-      }),
+        num_images: 1,
+        safety_tolerance: 2,
+      },
     });
-  } catch {
-    return sendJson(res, 502, { error: 'Could not reach Fal API.' });
+  } catch (err) {
+    return sendJson(res, 502, { error: extractError(err) });
   }
 
-  let falJson = null;
-  try {
-    falJson = await falRes.json();
-  } catch {
-    falJson = null;
-  }
-
-  if (!falRes.ok) {
-    const msg = falJson?.detail || falJson?.error || 'Fal API returned an error.';
-    return sendJson(res, falRes.status, { error: String(msg) });
-  }
-
-  const imageUrl =
-    falJson?.images?.[0]?.url ||
-    falJson?.image?.url ||
-    falJson?.output?.images?.[0]?.url ||
-    null;
-
-  if (!imageUrl) {
+  const editedImageUrl = editResult?.data?.images?.[0]?.url || null;
+  if (!editedImageUrl) {
     return sendJson(res, 502, { error: 'Fal API response missing output image URL.' });
   }
 
-  return sendJson(res, 200, { imageUrl });
+  let removeBgResult;
+  try {
+    removeBgResult = await fal.subscribe(REMOVE_BG_MODEL_ID, {
+      input: {
+        image_url: editedImageUrl,
+      },
+    });
+  } catch (err) {
+    return sendJson(res, 502, { error: `Background removal failed: ${extractError(err)}` });
+  }
+
+  const imageUrl =
+    removeBgResult?.data?.image?.url ||
+    removeBgResult?.data?.image ||
+    removeBgResult?.data?.images?.[0]?.url ||
+    null;
+  if (!imageUrl) {
+    return sendJson(res, 502, { error: 'Fal background-removal response missing output image URL.' });
+  }
+
+  let imageDataResponse = null;
+  try {
+    const imageRes = await fetch(imageUrl);
+    if (imageRes.ok) {
+      const contentType = imageRes.headers.get('content-type') || 'image/png';
+      const arr = await imageRes.arrayBuffer();
+      const base64 = Buffer.from(arr).toString('base64');
+      imageDataResponse = `data:${contentType};base64,${base64}`;
+    }
+  } catch {
+    imageDataResponse = null;
+  }
+
+  return sendJson(res, 200, {
+    imageUrl,
+    imageDataUrl: imageDataResponse,
+  });
 };
