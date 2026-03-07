@@ -7,6 +7,13 @@ function blobToDataUrl(blob) {
   });
 }
 
+function dataUrlToBlob(dataUrl) {
+  return fetch(dataUrl).then((r) => {
+    if (!r.ok) throw new Error('Could not decode generated image payload.');
+    return r.blob();
+  });
+}
+
 export async function createCyborgPortraitFromSnapshot(snapshotBlob) {
   const imageDataUrl = await blobToDataUrl(snapshotBlob);
 
@@ -31,10 +38,10 @@ export async function createCyborgPortraitFromSnapshot(snapshotBlob) {
     throw new Error('Fal edit response did not include an image URL.');
   }
 
-  const editedRes = await fetch(payload.imageUrl);
-  if (!editedRes.ok) {
-    throw new Error('Could not download generated portrait image.');
+  if (payload.imageDataUrl && typeof payload.imageDataUrl === 'string') {
+    const blob = await dataUrlToBlob(payload.imageDataUrl);
+    return { blob, imageUrl: payload.imageUrl };
   }
 
-  return editedRes.blob();
+  return { blob: null, imageUrl: payload.imageUrl };
 }
