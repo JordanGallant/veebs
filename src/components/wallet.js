@@ -158,7 +158,7 @@ export function createWallet(parent) {
     }
   }
 
-  const wrapper = el('div', { class: 'tab-content finance-panel' },
+  const wrapper = el('div', { class: 'finance-panel' },
     balanceEl,
     el('hr', { class: 'divider' }),
     qrSection,
