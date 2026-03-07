@@ -11,6 +11,11 @@ export const store = {
   messages: [],
   mediaStream: null,
   asciiTransitionBodyTime: null,
+  asciiCamera: null,
+  selectedPlan: null,
+  messageQuota: null,
+  hasCustomerSupport: false,
+  pendingTwinBirth: false,
 };
 
 export function resetSession() {
@@ -18,6 +23,11 @@ export function resetSession() {
   store.photoBlob = null;
   store.audioBlob = null;
   store.asciiTransitionBodyTime = null;
+  store.asciiCamera = null;
+  store.selectedPlan = null;
+  store.messageQuota = null;
+  store.hasCustomerSupport = false;
+  store.pendingTwinBirth = false;
   if (store.mediaStream) {
     for (const track of store.mediaStream.getTracks()) track.stop();
   }

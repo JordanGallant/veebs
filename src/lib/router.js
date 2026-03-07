@@ -1,6 +1,7 @@
 const routes = new Map();
 let currentCleanup;
 let container;
+let asciiLayer;
 
 export function registerScreen(name, route) {
   routes.set(name, route);
@@ -8,6 +9,10 @@ export function registerScreen(name, route) {
 
 export function navigate(screen) {
   window.location.hash = screen;
+}
+
+export function getAsciiLayer() {
+  return asciiLayer;
 }
 
 function getScreenFromHash() {
@@ -30,8 +35,9 @@ async function render() {
   currentCleanup = route.cleanup;
 }
 
-export function initRouter(appEl) {
-  container = appEl;
+export function initRouter(screenEl, asciiEl) {
+  container = screenEl;
+  asciiLayer = asciiEl;
   window.addEventListener('hashchange', () => render());
   render();
 }

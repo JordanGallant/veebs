@@ -1,18 +1,9 @@
 import { el, on } from '../lib/dom.js';
-import { navigate, registerScreen } from '../lib/router.js';
+import { navigate, registerScreen, getAsciiLayer } from '../lib/router.js';
 import { store } from '../lib/store.js';
 import { createAsciiCamera } from '../components/ascii-camera.js';
 import { createAudioRecorder } from '../components/audio-recorder.js';
 import { animateTypewriter } from '../lib/typewriter.js';
-
-const BIRTHING_MESSAGES = [
-  'Analyzing voice patterns...',
-  'Mapping facial features...',
-  'Generating personality matrix...',
-  'Initializing neural pathways...',
-  'Calibrating empathy circuits...',
-  'Bootstrapping consciousness...',
-];
 
 const TWIN_QUESTIONS = [
   'What are your goals in life?',
@@ -22,27 +13,21 @@ const TWIN_QUESTIONS = [
 ];
 
 let cam = null;
-let birthingMsgTimer = 0;
-let birthingNavTimer = 0;
-let birthingShowTimer = 0;
-let birthingExitTimer = 0;
+let pricingNavTimer = 0;
 let stopQuestionType = null;
-let stopBirthingType = null;
 
 export function registerRecording() {
   registerScreen('recording', {
     render,
     cleanup() {
-      if (cam) cam.stop();
+      if (cam) {
+        cam.stop();
+        if (cam.el.parentNode) cam.el.parentNode.removeChild(cam.el);
+      }
       cam = null;
-      clearInterval(birthingMsgTimer);
-      clearTimeout(birthingNavTimer);
-      clearTimeout(birthingShowTimer);
-      clearTimeout(birthingExitTimer);
+      clearTimeout(pricingNavTimer);
       if (stopQuestionType) stopQuestionType();
-      if (stopBirthingType) stopBirthingType();
       stopQuestionType = null;
-      stopBirthingType = null;
     },
   });
 }
@@ -60,12 +45,24 @@ function render(container) {
     return;
   }
 
-  cam = createAsciiCamera({
-    mirror: true,
-    rain: true,
-    transitionBodyTime: store.asciiTransitionBodyTime,
-  });
-  store.asciiTransitionBodyTime = null;
+  const reusedCam = store.asciiCamera;
+  store.asciiCamera = null;
+
+  if (reusedCam) {
+    cam = reusedCam;
+  } else {
+    cam = createAsciiCamera({
+      mirror: true,
+      rain: true,
+      transitionBodyTime: store.asciiTransitionBodyTime,
+    });
+    store.asciiTransitionBodyTime = null;
+    const layer = getAsciiLayer();
+    if (layer) {
+      layer.innerHTML = '';
+      layer.appendChild(cam.el);
+    }
+  }
 
   const heading = el('h1', { class: 'text-lg bold recording-heading' }, '');
   const helpToggle = el('button', {
@@ -106,11 +103,7 @@ function render(container) {
     errorBox,
   );
   const recordingContent = el('div', { class: 'recording-content' }, recordingPanel);
-
-  const birthingHeading = el('h1', { class: 'text-xl bold birthing-heading' }, '');
-  const birthingStatus = el('p', { class: 'birthing-status' }, BIRTHING_MESSAGES[0]);
-  const birthingPanel = el('div', { class: 'overlay-panel overlay-panel--compact overlay-shell' }, birthingHeading, birthingStatus);
-  const birthingContent = el('div', { class: 'birthing-content', style: 'display:none' }, birthingPanel);
+  const wrapper = el('div', { class: 'screen recording-screen' }, recordingContent);
 
   let recorder = null;
   let timerInterval = 0;
@@ -125,41 +118,6 @@ function render(container) {
       swap,
       swapDuration: 120,
     });
-  }
-
-  function enterBirthing() {
-    cam.beginBirthing();
-    recordingPanel.classList.remove('is-visible');
-    recordingPanel.classList.add('is-exiting');
-    birthingShowTimer = window.setTimeout(() => {
-      recordingContent.style.display = 'none';
-      birthingContent.style.display = 'flex';
-      window.requestAnimationFrame(() => {
-        birthingPanel.classList.add('is-visible');
-        if (stopBirthingType) stopBirthingType();
-        stopBirthingType = animateTypewriter(birthingHeading, 'Birthing Your Twin...', {
-          delay: 70,
-          speed: 30,
-          swap: false,
-        });
-      });
-    }, 420);
-
-    let msgIdx = 0;
-    birthingMsgTimer = window.setInterval(() => {
-      msgIdx = (msgIdx + 1) % BIRTHING_MESSAGES.length;
-      birthingStatus.textContent = BIRTHING_MESSAGES[msgIdx];
-    }, 1200);
-
-    birthingNavTimer = window.setTimeout(() => {
-      birthingPanel.classList.remove('is-visible');
-      birthingPanel.classList.add('is-exiting');
-      birthingExitTimer = window.setTimeout(() => {
-        if (cam) cam.stop();
-        cam = null;
-        navigate('dashboard');
-      }, 420);
-    }, 5600);
   }
 
   on(flowBtn, 'click', async () => {
@@ -223,19 +181,26 @@ function render(container) {
     clearInterval(timerInterval);
     recDot.style.display = 'none';
     cam.setWave(false);
-    enterBirthing();
+    if (store.mediaStream) {
+      for (const track of store.mediaStream.getTracks()) track.stop();
+    }
+    store.mediaStream = null;
+    store.asciiTransitionBodyTime = cam ? cam.captureBodyVideoTime() : null;
+    recordingPanel.classList.remove('is-visible');
+    recordingPanel.classList.add('is-exiting');
+    pricingNavTimer = window.setTimeout(() => {
+      navigate('pricing');
+    }, 420);
   });
 
-  const wrapper = el(
-    'div',
-    { class: 'screen recording-screen' },
-    cam.el,
-    recordingContent,
-    birthingContent,
-  );
-
   container.appendChild(wrapper);
-  cam.start(stream);
+
+  if (reusedCam) {
+    cam.continueWithStream(stream, { mirror: true, rain: true });
+  } else {
+    cam.start(stream);
+  }
+
   window.requestAnimationFrame(() => {
     recordingPanel.classList.add('is-visible');
     typeQuestionHeading('Answer some questions', false);

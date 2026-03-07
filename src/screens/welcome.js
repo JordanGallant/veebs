@@ -1,5 +1,5 @@
 import { el, on } from '../lib/dom.js';
-import { navigate, registerScreen } from '../lib/router.js';
+import { navigate, registerScreen, getAsciiLayer } from '../lib/router.js';
 import { store } from '../lib/store.js';
 import { createAsciiCamera } from '../components/ascii-camera.js';
 import { animateTypewriter } from '../lib/typewriter.js';
@@ -14,7 +14,10 @@ export function registerWelcome() {
   registerScreen('welcome', {
     render,
     cleanup() {
-      if (cam) cam.stop();
+      if (cam && store.asciiCamera !== cam) {
+        cam.stop();
+        if (cam.el.parentNode) cam.el.parentNode.removeChild(cam.el);
+      }
       cam = null;
       clearTimeout(revealTimer);
       clearTimeout(exitTimer);
@@ -52,6 +55,7 @@ function render(container) {
 
   const btn = el('button', { class: 'btn' }, 'Allow Access');
   const skipBtn = el('button', { class: 'btn btn--secondary', type: 'button' }, 'Continue without cloning');
+  const loginBtn = el('button', { class: 'btn btn--secondary btn--login', type: 'button' }, 'Log in');
 
   on(helpToggle, 'click', () => {
     const isOpen = infoWrap.classList.toggle('is-open');
@@ -70,10 +74,10 @@ function render(container) {
         audio: true,
       });
       store.mediaStream = stream;
+      store.asciiCamera = cam;
       panel.classList.remove('is-visible');
       panel.classList.add('is-exiting');
       exitTimer = window.setTimeout(() => {
-        store.asciiTransitionBodyTime = cam ? cam.captureBodyVideoTime() : null;
         navigate('recording');
       }, 420);
     } catch {
@@ -87,24 +91,35 @@ function render(container) {
   });
 
   on(skipBtn, 'click', () => {
-    store.asciiTransitionBodyTime = null;
+    store.asciiTransitionBodyTime = cam ? cam.captureBodyVideoTime() : null;
     panel.classList.remove('is-visible');
     panel.classList.add('is-exiting');
     exitTimer = window.setTimeout(() => {
-      navigate('dashboard');
+      navigate('questions');
     }, 420);
   });
 
-  const actions = el('div', { class: 'welcome-actions' }, btn, skipBtn);
+  on(loginBtn, 'click', () => {
+    store.pendingTwinBirth = false;
+    navigate('dashboard');
+  });
+
+  const secondaryActions = el('div', { class: 'welcome-secondary-actions' }, loginBtn, skipBtn);
+  const actions = el('div', { class: 'welcome-actions' }, btn, secondaryActions);
   const panel = el('div', { class: 'overlay-panel overlay-panel--compact overlay-shell welcome-panel' }, headingRow, infoWrap, errorBox, actions);
   const content = el('div', { class: 'welcome-content' }, brandTitle, panel);
 
   const wrapper = el(
     'div',
     { class: 'screen welcome-screen' },
-    cam.el,
     content,
   );
+
+  const layer = getAsciiLayer();
+  if (layer) {
+    layer.innerHTML = '';
+    layer.appendChild(cam.el);
+  }
 
   container.appendChild(wrapper);
   cam.startBody();

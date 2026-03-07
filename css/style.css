@@ -1,6 +1,6 @@
 :root {
   --color-fg: #2b2927;
-  --color-bg: #b5b4ea;
+  --color-bg: #cbcaf6;
   --font: 'IBM Plex Mono', monospace;
   --font-header: 'Stylish', cursive;
   --font-normal: 400;
@@ -40,7 +40,40 @@ h1, h2, h3,
 }
 
 #app {
+  position: relative;
   min-height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+#ascii-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+}
+
+#ascii-layer > .ascii-viewport {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  margin: 0;
+  border: none;
+  border-radius: 0;
+  padding: 0;
+  text-align: left;
+  font-size: clamp(5px, 0.75vw, 9px);
+  line-height: clamp(5px, 0.75vw, 9px);
+  text-rendering: geometricPrecision;
+  pointer-events: auto;
+}
+
+#screen-container {
+  position: relative;
+  z-index: 1;
+  flex: 1;
   display: flex;
   flex-direction: column;
 }
@@ -230,6 +263,7 @@ a {
 /* --- ASCII camera --- */
 
 .ascii-viewport {
+  display: block;
   font-family: 'PingFang SC', 'Noto Sans Mono CJK SC', 'Microsoft YaHei',
                'WenQuanYi Micro Hei Mono', monospace;
   font-size: 6px;
@@ -363,22 +397,6 @@ a {
   overflow: hidden;
 }
 
-.welcome-screen .ascii-viewport {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  max-width: none;
-  margin: 0;
-  border: none;
-  border-radius: 0;
-  padding: 0;
-  text-align: left;
-  font-size: clamp(5px, 0.75vw, 9px);
-  line-height: clamp(5px, 0.75vw, 9px);
-  text-rendering: geometricPrecision;
-}
-
 .welcome-content {
   position: absolute;
   inset: 0;
@@ -505,12 +523,36 @@ a {
 
 .welcome-actions {
   display: flex;
-  flex-wrap: wrap;
   gap: var(--space-sm);
+  align-items: stretch;
 }
 
-.welcome-actions .btn {
-  flex: 1 1 210px;
+.welcome-actions > .btn {
+  flex: 1 1 220px;
+  min-height: 56px;
+  padding: var(--space-sm) var(--space-md);
+}
+
+.welcome-secondary-actions {
+  flex: 1 1 220px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+}
+
+.welcome-secondary-actions .btn {
+  width: 100%;
+  flex: 0 0 auto;
+  min-height: 48px;
+  padding: var(--space-sm) var(--space-md);
+}
+
+.btn--login {
+  align-self: flex-end;
+  flex: none;
+  min-height: 0;
+  padding: 2px var(--space-sm);
+  font-size: var(--text-sm);
 }
 
 .recording-panel {
@@ -619,6 +661,94 @@ a {
   flex: 1 1 180px;
 }
 
+.question-textarea {
+  width: 100%;
+  min-height: 132px;
+  resize: vertical;
+  line-height: 1.5;
+}
+
+.pricing-panel {
+  width: min(640px, 100%);
+  align-items: stretch;
+  gap: var(--space-sm);
+  text-align: left;
+  padding: var(--space-md);
+  font-family: var(--font);
+}
+
+.pricing-heading {
+  min-height: 1.2em;
+}
+
+.pricing-options {
+  display: grid;
+  gap: var(--space-sm);
+}
+
+.pricing-option {
+  background: transparent;
+  color: var(--color-fg);
+  border: 1px solid color-mix(in srgb, var(--color-fg) 20%, transparent);
+  border-radius: var(--radius);
+  padding: var(--space-sm) var(--space-md);
+  font-family: var(--font);
+  font-size: var(--text-body);
+  font-weight: var(--font-normal);
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.2s, background-color 0.2s, opacity 0.2s;
+}
+
+.pricing-option:hover {
+  opacity: 0.9;
+}
+
+.pricing-option--selected {
+  border-color: var(--color-fg);
+  background: color-mix(in srgb, var(--color-fg) 8%, transparent);
+}
+
+.pricing-option-row {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-sm);
+}
+
+.pricing-option-price {
+  font-family: var(--font-header);
+}
+
+.pricing-option-copy {
+  margin-top: var(--space-xs);
+  font-family: var(--font);
+}
+
+.pricing-signup {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+}
+
+.pricing-status {
+  min-height: 1.4em;
+  font-family: var(--font);
+}
+
+.verify-panel {
+  width: min(520px, 100%);
+  align-items: stretch;
+  gap: var(--space-sm);
+  text-align: left;
+  padding: var(--space-md);
+}
+
+.verify-code {
+  text-align: center;
+  letter-spacing: 0.18em;
+  font-family: var(--font);
+}
+
 /* --- Recording controls --- */
 
 .recording-screen {
@@ -629,22 +759,6 @@ a {
   height: 100svh;
   padding: 0;
   overflow: hidden;
-}
-
-.recording-screen .ascii-viewport {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  max-width: none;
-  margin: 0;
-  border: none;
-  border-radius: 0;
-  padding: 0;
-  text-align: left;
-  font-size: clamp(5px, 0.75vw, 9px);
-  line-height: clamp(5px, 0.75vw, 9px);
-  text-rendering: geometricPrecision;
 }
 
 .recording-content {
@@ -869,8 +983,17 @@ a {
     padding: var(--space-md);
   }
 
-  .welcome-actions .btn {
+  .welcome-actions > .btn {
     flex-basis: 100%;
+  }
+
+  .welcome-secondary-actions {
+    flex-basis: 100%;
+  }
+
+  .welcome-secondary-actions .btn--login {
+    flex-basis: auto;
+    width: auto;
   }
 
   .rec-controls--compact .btn {

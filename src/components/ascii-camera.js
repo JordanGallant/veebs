@@ -1,4 +1,4 @@
-const CHARS = '　。一丨二十人三大双中丰内仿电机芯网体码数智械脑像镜链隆螺赛博器';
+const CHARS = '　。一丨二十人三大双中丰内仿电机芯网生码络智路脑孪像網链隆孿螺器';
 const CHARS_IDX = new Map();
 for (let i = 0; i < CHARS.length; i++) CHARS_IDX.set(CHARS[i], i);
 const HELIX_CHARS = '　。一人机芯智脑镜螺';
@@ -53,8 +53,8 @@ function detectLightBg() {
 export function createAsciiCamera(opts = {}) {
   const pre = document.createElement('pre');
   pre.className = 'ascii-viewport';
-  const mirror = opts.mirror === true;
-  const rainOn = opts.rain === true;
+  let mirror = opts.mirror === true;
+  let rainOn = opts.rain === true;
   const transitionBodyTime = Number.isFinite(opts.transitionBodyTime)
     ? Math.max(0, opts.transitionBodyTime)
     : null;
@@ -124,12 +124,20 @@ export function createAsciiCamera(opts = {}) {
   let lastBodyT = 0;
   let printInStart = 0;
   let printSourceBuf = null;
+  let measuredSig = '';
+  let measuredSize = null;
+  let camFrameBuf = null;
+  let camFrameDirty = true;
+  let camVideoFrameReq = 0;
+  let bodyFrameDirty = true;
+  let bodyVideoFrameReq = 0;
 
   bodyVideo.addEventListener('loadeddata', () => {
     bodyVideoReady = true;
     bodyFailed = false;
     bodyUseFallback = false;
     bodyFallbackStartMs = 0;
+    bodyFrameDirty = true;
   });
 
   bodyVideo.addEventListener('error', () => {
@@ -292,8 +300,38 @@ export function createAsciiCamera(opts = {}) {
     bodyFallbackStartMs = performance.now() - Math.max(0, seconds) * 1000;
   }
 
+  function watchVideoFrames(target, kind) {
+    if (typeof target.requestVideoFrameCallback !== 'function') return;
+    const setReqId = kind === 'cam'
+      ? (id) => { camVideoFrameReq = id; }
+      : (id) => { bodyVideoFrameReq = id; };
+    setReqId(target.requestVideoFrameCallback(() => {
+      setReqId(0);
+      if (kind === 'cam') camFrameDirty = true;
+      else bodyFrameDirty = true;
+      if (running) watchVideoFrames(target, kind);
+    }));
+  }
+
+  function stopWatchingVideoFrames(target, kind) {
+    const reqId = kind === 'cam' ? camVideoFrameReq : bodyVideoFrameReq;
+    if (reqId && typeof target.cancelVideoFrameCallback === 'function') {
+      target.cancelVideoFrameCallback(reqId);
+    }
+    if (kind === 'cam') camVideoFrameReq = 0;
+    else bodyVideoFrameReq = 0;
+  }
+
   function measure() {
     const style = window.getComputedStyle(pre);
+    const sig = [
+      style.fontFamily,
+      style.fontWeight,
+      style.fontSize,
+      style.letterSpacing,
+      style.lineHeight,
+    ].join('|');
+    if (sig === measuredSig && measuredSize) return measuredSize;
     const probe = document.createElement('span');
     probe.textContent = '中';
     probe.style.cssText =
@@ -306,10 +344,12 @@ export function createAsciiCamera(opts = {}) {
     probe.remove();
     const fs = parseFloat(style.fontSize) || 10;
     const lh = parseFloat(style.lineHeight);
-    return {
+    measuredSig = sig;
+    measuredSize = {
       charW: Math.max(1, r.width || fs),
       lineH: Number.isFinite(lh) ? lh : Math.max(1, r.height || fs),
     };
+    return measuredSize;
   }
 
   function resize() {
@@ -318,6 +358,7 @@ export function createAsciiCamera(opts = {}) {
     const { charW, lineH } = measure();
     const newCols = Math.max(1, Math.floor(rect.width / charW));
     const newTotal = Math.max(2, Math.floor(rect.height / lineH));
+    invertLuma = detectLightBg();
     if (newCols === cols && newTotal === totalRows) return;
 
     cols = newCols;
@@ -338,14 +379,16 @@ export function createAsciiCamera(opts = {}) {
     smoothed = null;
     hasPrev = false;
     prevBand = null;
+    camFrameBuf = null;
+    camFrameDirty = true;
     helixData = null;
     bodyBuf = null;
     blankBodyBuf = null;
+    bodyFrameDirty = true;
     bodySampleW = 0;
     bodySampleH = 0;
     printSourceBuf = null;
     drops = drops.filter(d => d.x < cols && d.y < rainRows);
-    invertLuma = detectLightBg();
   }
 
   function ensureHelix() {
@@ -539,8 +582,11 @@ export function createAsciiCamera(opts = {}) {
     const useFallback = shouldUseBodyFallback(now);
     ensureBodyVideoPlayback();
     if (!lastBodyT || now - lastBodyT >= BODY_STEP_MS) {
-      const next = useFallback ? buildBodyFrameFromFallback(now) : buildBodyFrameFromVideo();
+      const next = useFallback
+        ? buildBodyFrameFromFallback(now)
+        : ((bodyFrameDirty || !bodyBuf) ? buildBodyFrameFromVideo() : bodyBuf);
       if (next) bodyBuf = next;
+      if (!useFallback) bodyFrameDirty = false;
       lastBodyT = now;
     }
 
@@ -603,53 +649,64 @@ export function createAsciiCamera(opts = {}) {
   function drawRecording(now) {
     if (!cols || !camRows) return;
 
-    const srcW = Math.max(1, video.videoWidth || cols);
-    const srcH = Math.max(1, video.videoHeight || camRows);
-    drawSourceWithAspectPolicy(
-      ctx,
-      video,
-      srcW,
-      srcH,
-      cols,
-      camRows,
-      CAM_MAX_STRETCH_DISTORTION,
-      mirror,
-    );
-
-    const { data } = ctx.getImageData(0, 0, cols, camRows);
     const camN = cols * camRows;
+    const shouldSampleCam = !camFrameBuf
+      || typeof video.requestVideoFrameCallback !== 'function'
+      || camFrameDirty;
+    if (shouldSampleCam) {
+      const srcW = Math.max(1, video.videoWidth || cols);
+      const srcH = Math.max(1, video.videoHeight || camRows);
+      drawSourceWithAspectPolicy(
+        ctx,
+        video,
+        srcW,
+        srcH,
+        cols,
+        camRows,
+        CAM_MAX_STRETCH_DISTORTION,
+        mirror,
+      );
 
-    if (!smoothed || smoothed.length !== camN) {
-      smoothed = new Float32Array(camN);
-      hasPrev = false;
+      const { data } = ctx.getImageData(0, 0, cols, camRows);
+
+      if (!smoothed || smoothed.length !== camN) {
+        smoothed = new Float32Array(camN);
+        hasPrev = false;
+      }
+
+      let lo = 255, hi = 0;
+      for (let i = 0; i < camN; i++) {
+        const p = i * 4;
+        const raw = data[p] * 0.2126 + data[p + 1] * 0.7152 + data[p + 2] * 0.0722;
+        const v = hasPrev ? smoothed[i] + (raw - smoothed[i]) * LUMA_BLEND : raw;
+        smoothed[i] = v;
+        if (v < lo) lo = v;
+        if (v > hi) hi = v;
+      }
+      hasPrev = true;
+
+      const range = Math.max(1, hi - lo);
+      const cLast = CHARS.length - 1;
+      const nextCamFrame = new Array(camN);
+      for (let i = 0; i < camN; i++) {
+        const norm = (smoothed[i] - lo) / range;
+        const cl = Math.pow(norm, LUMA_GAMMA);
+        let ci = Math.floor(cl * cLast);
+        if (invertLuma) ci = cLast - ci;
+        if (ci > 1 && ci < cLast - 1 && Math.random() < JITTER_CHANCE) {
+          ci += Math.random() < 0.5 ? -1 : 1;
+        }
+        nextCamFrame[i] = CHARS[ci];
+      }
+      camFrameBuf = nextCamFrame;
+      camFrameDirty = false;
     }
 
-    let lo = 255, hi = 0;
-    for (let i = 0; i < camN; i++) {
-      const p = i * 4;
-      const raw = data[p] * 0.2126 + data[p + 1] * 0.7152 + data[p + 2] * 0.0722;
-      const v = hasPrev ? smoothed[i] + (raw - smoothed[i]) * LUMA_BLEND : raw;
-      smoothed[i] = v;
-      if (v < lo) lo = v;
-      if (v > hi) hi = v;
-    }
-    hasPrev = true;
-
-    const range = Math.max(1, hi - lo);
-    const cLast = CHARS.length - 1;
     const total = cols * totalRows;
     const buf = new Array(total);
-
-    for (let i = 0; i < camN; i++) {
-      const norm = (smoothed[i] - lo) / range;
-      const cl = Math.pow(norm, LUMA_GAMMA);
-      let ci = Math.floor(cl * cLast);
-      if (invertLuma) ci = cLast - ci;
-      if (ci > 1 && ci < cLast - 1 && Math.random() < JITTER_CHANCE) {
-        ci += Math.random() < 0.5 ? -1 : 1;
-      }
-      buf[i] = CHARS[ci];
-    }
+    const cLast = CHARS.length - 1;
+    const baseCam = camFrameBuf || ensureBlankBody();
+    for (let i = 0; i < camN; i++) buf[i] = baseCam[i];
 
     if (rainOn && rainRows > 0) {
       const tracked = Math.min(DIFF_TRACK_ROWS, camRows);
@@ -751,8 +808,11 @@ export function createAsciiCamera(opts = {}) {
       const useFallback = shouldUseBodyFallback(now);
       ensureBodyVideoPlayback();
       if (!lastBodyT || now - lastBodyT >= BODY_STEP_MS) {
-        const next = useFallback ? buildBodyFrameFromFallback(now) : buildBodyFrameFromVideo();
+        const next = useFallback
+          ? buildBodyFrameFromFallback(now)
+          : ((bodyFrameDirty || !printSourceBuf) ? buildBodyFrameFromVideo() : printSourceBuf);
         if (next) printSourceBuf = next;
+        if (!useFallback) bodyFrameDirty = false;
         lastBodyT = now;
       }
       if (printSourceBuf) fromBuf = printSourceBuf;
@@ -804,10 +864,13 @@ export function createAsciiCamera(opts = {}) {
       printInStart = 0;
       printSourceBuf = null;
       bodyBuf = null;
+      bodyFrameDirty = true;
       blankBodyBuf = null;
       bodyFallbackStartMs = 0;
       lastBodyT = 0;
       configureBodyVideoSource();
+      stopWatchingVideoFrames(bodyVideo, 'body');
+      watchVideoFrames(bodyVideo, 'body');
       if (window.matchMedia && window.matchMedia('(max-width: 900px)').matches) {
         ensureBodyAsciiFallback();
       }
@@ -826,8 +889,13 @@ export function createAsciiCamera(opts = {}) {
       printInStart = performance.now();
       printSourceBuf = null;
       bodyBuf = null;
+      bodyFrameDirty = true;
       bodyFallbackStartMs = 0;
       lastBodyT = 0;
+      camFrameBuf = null;
+      camFrameDirty = true;
+      stopWatchingVideoFrames(video, 'cam');
+      watchVideoFrames(video, 'cam');
       if (!bodyVideo.src) configureBodyVideoSource();
       if (transitionBodyTime !== null) {
         const seekToTransitionTime = () => {
@@ -836,8 +904,11 @@ export function createAsciiCamera(opts = {}) {
         };
         if (bodyVideo.readyState >= 1) seekToTransitionTime();
         else bodyVideo.addEventListener('loadedmetadata', seekToTransitionTime, { once: true });
+        stopWatchingVideoFrames(bodyVideo, 'body');
+        watchVideoFrames(bodyVideo, 'body');
         ensureBodyVideoPlayback();
       } else {
+        stopWatchingVideoFrames(bodyVideo, 'body');
         bodyVideo.pause();
       }
       if (rainOn && !audioCtx) {
@@ -860,10 +931,51 @@ export function createAsciiCamera(opts = {}) {
       rafId = requestAnimationFrame(draw);
     },
 
+    continueWithStream(stream, opts = {}) {
+      if (opts.mirror !== undefined) mirror = opts.mirror;
+      if (opts.rain !== undefined) rainOn = opts.rain;
+
+      video.srcObject = stream;
+      video.play();
+
+      cancelAnimationFrame(rafId);
+
+      phase = 'recording';
+      printInStart = performance.now();
+      lastBodyT = 0;
+      camFrameBuf = null;
+      camFrameDirty = true;
+
+      stopWatchingVideoFrames(video, 'cam');
+      watchVideoFrames(video, 'cam');
+
+      if (rainOn && !audioCtx) {
+        try {
+          audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+          analyser = audioCtx.createAnalyser();
+          analyser.fftSize = 256;
+          audioSource = audioCtx.createMediaStreamSource(stream);
+          audioSource.connect(analyser);
+          audioData = new Uint8Array(analyser.fftSize);
+        } catch {
+          audioCtx = null;
+          analyser = null;
+          audioSource = null;
+          audioData = null;
+        }
+      }
+
+      cols = 0;
+      resize();
+      rafId = requestAnimationFrame(draw);
+    },
+
     beginBirthing() {
       video.pause();
       video.srcObject = null;
       bodyVideo.pause();
+      stopWatchingVideoFrames(video, 'cam');
+      stopWatchingVideoFrames(bodyVideo, 'body');
       if (audioSource) audioSource.disconnect();
       if (audioCtx) audioCtx.close().catch(() => {});
       audioCtx = null;
@@ -906,6 +1018,8 @@ export function createAsciiCamera(opts = {}) {
       video.pause();
       video.srcObject = null;
       bodyVideo.pause();
+      stopWatchingVideoFrames(video, 'cam');
+      stopWatchingVideoFrames(bodyVideo, 'body');
       if (audioSource) audioSource.disconnect();
       if (audioCtx) audioCtx.close().catch(() => {});
       audioCtx = null;
@@ -918,11 +1032,14 @@ export function createAsciiCamera(opts = {}) {
       hasPrev = false;
       prevBand = null;
       lastBuf = null;
+      camFrameBuf = null;
+      camFrameDirty = true;
       drops = [];
       frozen = null;
       flipTimes = null;
       helixData = null;
       bodyBuf = null;
+      bodyFrameDirty = true;
       blankBodyBuf = null;
       printInStart = 0;
       printSourceBuf = null;
