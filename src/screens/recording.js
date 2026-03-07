@@ -189,7 +189,7 @@ function render(container) {
     recordingPanel.classList.remove('is-visible');
     recordingPanel.classList.add('is-exiting');
     pricingNavTimer = window.setTimeout(() => {
-      navigate('pricing');
+      navigate(store.token ? 'pricing' : 'auth');
     }, 420);
   });
 

@@ -1,18 +1,6 @@
 import { el, on, clear } from '../lib/dom.js';
 import { store } from '../lib/store.js';
-
-const MOCK_REPLIES = [
-  "That's interesting! Tell me more about that.",
-  "I'll keep that in mind. What else should I know?",
-  "Got it. I'm learning a lot about you.",
-  "I can definitely help with that.",
-  "Noted! I'm building my understanding of you.",
-  "That resonates with my personality matrix.",
-  "Fascinating. Let's explore that further.",
-  "I appreciate you sharing that with me.",
-  "My circuits are buzzing with that info.",
-  "Consider it done -- well, virtually at least.",
-];
+import { sendMessage, getChatHistory } from '../lib/api.js';
 
 export function createChat(parent) {
   const log = el('div', { class: 'chat-log' });
@@ -22,31 +10,52 @@ export function createChat(parent) {
   const wrapper = el('div', { class: 'tab-content' }, log, row);
   parent.appendChild(wrapper);
 
-  function renderMessages() {
-    clear(log);
-    for (const msg of store.messages) {
-      const cls = msg.role === 'user' ? 'chat-msg chat-msg--user' : 'chat-msg chat-msg--twin';
-      log.appendChild(el('div', { class: cls }, msg.content));
-    }
+  function appendMessage(role, content) {
+    const cls = role === 'user' ? 'chat-msg chat-msg--user' : 'chat-msg chat-msg--twin';
+    log.appendChild(el('div', { class: cls }, content));
     log.scrollTop = log.scrollHeight;
   }
 
-  function send() {
+  function renderMessages() {
+    clear(log);
+    for (const msg of store.messages) {
+      appendMessage(msg.role, msg.content);
+    }
+  }
+
+  async function send() {
     const text = input.value.trim();
     if (!text) return;
 
     store.messages.push({ role: 'user', content: text });
+    appendMessage('user', text);
     input.value = '';
-    renderMessages();
-
     sendBtn.setAttribute('disabled', '');
+    input.setAttribute('disabled', '');
 
-    setTimeout(() => {
-      const reply = generateReply(text);
+    // Show typing indicator
+    const typing = el('div', { class: 'chat-msg chat-msg--twin chat-msg--typing' }, '...');
+    log.appendChild(typing);
+    log.scrollTop = log.scrollHeight;
+
+    try {
+      if (!store.token) throw new Error('Not signed in');
+      const data = await sendMessage(text);
+      const reply = data.response || "I'm not sure how to respond to that.";
       store.messages.push({ role: 'twin', content: reply });
-      renderMessages();
-      sendBtn.removeAttribute('disabled');
-    }, 600 + Math.random() * 800);
+      if (typing.parentNode) typing.parentNode.removeChild(typing);
+      appendMessage('twin', reply);
+    } catch (err) {
+      if (typing.parentNode) typing.parentNode.removeChild(typing);
+      const msg = err.message.includes('Authorization') || err.message.includes('signed in')
+        ? 'Please sign in to chat. Go to Settings and sign out, then sign back in.'
+        : `Error: ${err.message}`;
+      appendMessage('twin', msg);
+    }
+
+    sendBtn.removeAttribute('disabled');
+    input.removeAttribute('disabled');
+    input.focus();
   }
 
   on(sendBtn, 'click', send);
@@ -54,41 +63,22 @@ export function createChat(parent) {
     if (e.key === 'Enter') send();
   });
 
+  // Load chat history from backend
+  if (store.token) {
+    getChatHistory()
+      .then((messages) => {
+        if (Array.isArray(messages) && messages.length > 0) {
+          store.messages = messages.map((m) => ({
+            role: m.role === 'assistant' ? 'twin' : m.role,
+            content: m.content,
+          }));
+          renderMessages();
+        }
+      })
+      .catch(() => {
+        // Silently fail — just start fresh
+      });
+  }
+
   renderMessages();
-}
-
-function generateReply(userMsg) {
-  const lower = userMsg.toLowerCase();
-  const profile = (store.characterProfile || '').trim();
-
-  if (lower.includes('name')) {
-    return `My name is ${store.name}. Nice to formally introduce myself!`;
-  }
-  if (lower.includes('hobby') || lower.includes('hobbies')) {
-    return pickProfileSentence(profile, ['enjoy', 'hobby', 'creative', 'writing', 'idea'])
-      || 'I enjoy a mix of creative and practical work. Tell me what you want to focus on first.';
-  }
-  if (lower.includes('help') || lower.includes('task') || lower.includes('duty')) {
-    return pickProfileSentence(profile, ['help', 'task', 'duty', 'organizing', 'routine', 'guidance'])
-      || 'I can help with planning, organizing, and turning rough ideas into next steps.';
-  }
-  if (lower.includes('how are you') || lower.includes('feeling')) {
-    return pickProfileSentence(profile, ['calm', 'optimistic', 'warm', 'tone', 'humor'])
-      || "I'm calm, focused, and ready to help.";
-  }
-
-  return MOCK_REPLIES[Math.floor(Math.random() * MOCK_REPLIES.length)];
-}
-
-function pickProfileSentence(profile, keywords) {
-  if (!profile) return '';
-  const sentences = profile
-    .split(/(?<=[.!?])\s+/)
-    .map((s) => s.trim())
-    .filter(Boolean);
-  const match = sentences.find((sentence) => {
-    const lower = sentence.toLowerCase();
-    return keywords.some((keyword) => lower.includes(keyword));
-  });
-  return match || sentences[0] || '';
 }

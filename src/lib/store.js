@@ -1,4 +1,10 @@
 export const store = {
+  // Auth
+  token: null,
+  user: null,
+  agentId: 1, // Rocky — change this per user later
+
+  // Twin
   id: null,
   name: 'Unnamed Twin',
   photoBlob: null,

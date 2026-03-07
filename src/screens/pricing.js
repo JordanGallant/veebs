@@ -3,6 +3,7 @@ import { navigate, registerScreen, getAsciiLayer } from '../lib/router.js';
 import { store } from '../lib/store.js';
 import { createAsciiCamera } from '../components/ascii-camera.js';
 import { animateTypewriter } from '../lib/typewriter.js';
+import { createCheckout } from '../lib/api.js';
 
 const PRICING_OPTIONS = [
   {
@@ -13,6 +14,7 @@ const PRICING_OPTIONS = [
     messages: 100,
     support: false,
     walletBonus: 0,
+    amountUsd: 10,
   },
   {
     id: 'monthly',
@@ -22,6 +24,7 @@ const PRICING_OPTIONS = [
     messages: 5555,
     support: true,
     walletBonus: 0,
+    amountUsd: 55.5,
   },
   {
     id: 'yearly',
@@ -31,13 +34,12 @@ const PRICING_OPTIONS = [
     messages: 5555,
     support: true,
     walletBonus: 55,
+    amountUsd: 555,
   },
 ];
 
 let cam = null;
 let revealTimer = 0;
-let navTimer = 0;
-let paymentTimer = 0;
 let stopHeadingType = null;
 
 export function registerPricing() {
@@ -50,8 +52,6 @@ export function registerPricing() {
       }
       cam = null;
       clearTimeout(revealTimer);
-      clearTimeout(navTimer);
-      clearTimeout(paymentTimer);
       if (stopHeadingType) stopHeadingType();
       stopHeadingType = null;
     },
@@ -59,6 +59,12 @@ export function registerPricing() {
 }
 
 function render(container) {
+  // If not logged in, redirect to auth first
+  if (!store.token) {
+    navigate('auth');
+    return;
+  }
+
   cam = createAsciiCamera({
     transitionBodyTime: store.asciiTransitionBodyTime,
   });
@@ -68,33 +74,15 @@ function render(container) {
   const subtitle = el(
     'p',
     { class: 'secondary text-sm' },
-    'Choose a plan, then sign up to continue. Your twin is born after payment and sign-up.',
+    'Choose a plan to activate your twin.',
   );
 
   const optionsWrap = el('div', { class: 'pricing-options' });
-  const emailInput = el('input', {
-    class: 'input',
-    type: 'email',
-    placeholder: 'Email',
-    autocomplete: 'email',
-  });
-  const passInput = el('input', {
-    class: 'input',
-    type: 'password',
-    placeholder: 'Password',
-    autocomplete: 'new-password',
-  });
   const submitBtn = el('button', { class: 'btn', type: 'button', disabled: '' }, 'Select a plan');
+  const skipBtn = el('button', { class: 'btn btn--secondary', type: 'button' }, 'Skip for now');
   const status = el('p', { class: 'secondary text-sm pricing-status' });
 
-  const signup = el(
-    'div',
-    { class: 'pricing-signup' },
-    emailInput,
-    passInput,
-    submitBtn,
-    status,
-  );
+  const actions = el('div', { class: 'pricing-signup' }, submitBtn, skipBtn, status);
 
   const panel = el(
     'div',
@@ -102,7 +90,7 @@ function render(container) {
     heading,
     subtitle,
     optionsWrap,
-    signup,
+    actions,
   );
   const content = el('div', { class: 'recording-content' }, panel);
   const wrapper = el('div', { class: 'screen recording-screen' }, content);
@@ -122,27 +110,7 @@ function render(container) {
       return;
     }
     submitBtn.removeAttribute('disabled');
-    submitBtn.textContent = `Sign up and pay (${selectedOption.price})`;
-  }
-
-  function applyPlan(option) {
-    store.selectedPlan = option.id;
-    store.messageQuota = option.messages;
-    store.hasCustomerSupport = option.support;
-
-    if (option.walletBonus > 0) {
-      store.balance += option.walletBonus;
-      store.transactions.push({
-        amount: option.walletBonus,
-        type: 'bonus',
-        date: new Date().toLocaleDateString('en-US', {
-          month: 'short',
-          day: 'numeric',
-          hour: '2-digit',
-          minute: '2-digit',
-        }),
-      });
-    }
+    submitBtn.textContent = `Pay (${selectedOption.price})`;
   }
 
   function renderOptions() {
@@ -171,29 +139,60 @@ function render(container) {
     }
   }
 
-  on(submitBtn, 'click', () => {
+  on(skipBtn, 'click', () => {
+    store.pendingTwinBirth = true;
+    panel.classList.remove('is-visible');
+    panel.classList.add('is-exiting');
+    setTimeout(() => {
+      store.asciiTransitionBodyTime = cam ? cam.captureBodyVideoTime() : null;
+      navigate('birthing');
+    }, 420);
+  });
+
+  on(submitBtn, 'click', async () => {
     if (!selectedOption) return;
-    const email = emailInput.value.trim();
-    const password = passInput.value.trim();
-    if (!email || !password) {
-      status.textContent = 'Enter email and password to sign up.';
-      return;
+
+    submitBtn.setAttribute('disabled', '');
+    status.textContent = 'Redirecting to payment...';
+
+    // Store plan info
+    store.selectedPlan = selectedOption.id;
+    store.messageQuota = selectedOption.messages;
+    store.hasCustomerSupport = selectedOption.support;
+
+    if (selectedOption.walletBonus > 0) {
+      store.balance += selectedOption.walletBonus;
+      store.transactions.push({
+        amount: selectedOption.walletBonus,
+        type: 'bonus',
+        date: new Date().toLocaleDateString('en-US', {
+          month: 'short',
+          day: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit',
+        }),
+      });
     }
 
-    status.textContent = 'Processing payment and creating account...';
-    submitBtn.setAttribute('disabled', '');
-    emailInput.setAttribute('disabled', '');
-    passInput.setAttribute('disabled', '');
-    paymentTimer = window.setTimeout(() => {
-      applyPlan(selectedOption);
-      store.pendingTwinBirth = true;
-      panel.classList.remove('is-visible');
-      panel.classList.add('is-exiting');
-      navTimer = window.setTimeout(() => {
-        store.asciiTransitionBodyTime = cam ? cam.captureBodyVideoTime() : null;
-        navigate('birthing');
-      }, 420);
-    }, 800);
+    try {
+      const checkout = await createCheckout(selectedOption.amountUsd);
+      if (checkout.checkout_url) {
+        localStorage.setItem('ct_pending_plan', selectedOption.id);
+        window.location.href = checkout.checkout_url;
+      } else {
+        // Stripe not configured — skip payment
+        store.pendingTwinBirth = true;
+        panel.classList.remove('is-visible');
+        panel.classList.add('is-exiting');
+        setTimeout(() => {
+          store.asciiTransitionBodyTime = cam ? cam.captureBodyVideoTime() : null;
+          navigate('birthing');
+        }, 420);
+      }
+    } catch (err) {
+      status.textContent = err.message;
+      submitBtn.removeAttribute('disabled');
+    }
   });
 
   container.appendChild(wrapper);

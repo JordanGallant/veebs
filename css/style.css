@@ -1010,3 +1010,55 @@ a {
   }
 
 }
+
+/* ── Login form on welcome ── */
+.welcome-login-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+}
+
+/* ── Wallet QR ── */
+.wallet-qr-section {
+  text-align: center;
+  padding: var(--space-sm) 0;
+}
+.wallet-qr {
+  border: 2px solid rgba(255,255,255,0.1);
+  border-radius: 8px;
+  background: #fff;
+  padding: 8px;
+}
+.wallet-address {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 11px;
+  opacity: 0.7;
+  transition: opacity 0.15s;
+}
+.wallet-address:hover {
+  opacity: 1;
+}
+
+/* ── Chat typing indicator ── */
+.chat-msg--typing {
+  opacity: 0.5;
+  animation: pulse 1s ease-in-out infinite;
+}
+@keyframes pulse {
+  0%, 100% { opacity: 0.3; }
+  50% { opacity: 0.7; }
+}
+
+/* ── Auth form ── */
+.auth-form-fields {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+}
+.auth-form-fields .btn--secondary {
+  font-size: 0.85em;
+  opacity: 0.7;
+}
+.auth-form-fields .btn--secondary:hover {
+  opacity: 1;
+}

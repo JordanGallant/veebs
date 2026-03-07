@@ -1,6 +1,7 @@
 import { el, on, clear } from '../lib/dom.js';
 import { navigate, registerScreen } from '../lib/router.js';
 import { store, resetSession } from '../lib/store.js';
+import { logout } from '../lib/api.js';
 import { createChat } from '../components/chat.js';
 import { createCharacter } from '../components/character.js';
 import { createWallet } from '../components/wallet.js';
@@ -192,6 +193,7 @@ function createSettings(parent) {
 
   const signOutBtn = el('button', { class: 'btn btn--danger', type: 'button' }, 'Sign out');
   on(signOutBtn, 'click', () => {
+    logout();
     resetSession();
     navigate('welcome');
   });

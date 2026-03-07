@@ -3,6 +3,7 @@ import { navigate, registerScreen, getAsciiLayer } from '../lib/router.js';
 import { store } from '../lib/store.js';
 import { createAsciiCamera } from '../components/ascii-camera.js';
 import { animateTypewriter } from '../lib/typewriter.js';
+import { restoreSession } from '../lib/api.js';
 
 let cam = null;
 let revealTimer = 0;
@@ -30,6 +31,12 @@ export function registerWelcome() {
 }
 
 function render(container) {
+  // Auto-restore session — skip to dashboard if already logged in
+  if (restoreSession()) {
+    navigate('dashboard');
+    return;
+  }
+
   cam = createAsciiCamera();
 
   const brandTitle = el('h1', { class: 'welcome-title' }, '');
@@ -55,7 +62,7 @@ function render(container) {
 
   const btn = el('button', { class: 'btn' }, 'Allow Access');
   const skipBtn = el('button', { class: 'btn btn--secondary', type: 'button' }, 'Continue without cloning');
-  const loginBtn = el('button', { class: 'btn btn--secondary btn--login', type: 'button' }, 'Log in');
+  const loginBtn = el('button', { class: 'btn btn--secondary btn--login', type: 'button' }, 'Sign in / Sign up');
 
   on(helpToggle, 'click', () => {
     const isOpen = infoWrap.classList.toggle('is-open');
@@ -100,13 +107,17 @@ function render(container) {
   });
 
   on(loginBtn, 'click', () => {
-    store.pendingTwinBirth = false;
-    navigate('dashboard');
+    panel.classList.remove('is-visible');
+    panel.classList.add('is-exiting');
+    exitTimer = window.setTimeout(() => {
+      navigate('auth');
+    }, 420);
   });
 
   const secondaryActions = el('div', { class: 'welcome-secondary-actions' }, loginBtn, skipBtn);
   const actions = el('div', { class: 'welcome-actions' }, btn, secondaryActions);
-  const panel = el('div', { class: 'overlay-panel overlay-panel--compact overlay-shell welcome-panel' }, headingRow, infoWrap, errorBox, actions);
+  const panel = el('div', { class: 'overlay-panel overlay-panel--compact overlay-shell welcome-panel' },
+    headingRow, infoWrap, errorBox, actions);
   const content = el('div', { class: 'welcome-content' }, brandTitle, panel);
 
   const wrapper = el(
