@@ -223,6 +223,6 @@ function getProfileImageSrc() {
     return profileImageUrl;
   }
 
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 72 72"><rect width="72" height="72" rx="8" fill="currentColor" fill-opacity="0.08"/><circle cx="36" cy="28" r="12" fill="currentColor" fill-opacity="0.22"/><path d="M18 58c0-10 8-18 18-18s18 8 18 18" fill="currentColor" fill-opacity="0.22"/></svg>`;
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 72 72"><rect width="72" height="72" rx="8" fill="#2b2927" fill-opacity="0.08"/><circle cx="36" cy="28" r="12" fill="#2b2927" fill-opacity="0.22"/><path d="M18 58c0-10 8-18 18-18s18 8 18 18" fill="#2b2927" fill-opacity="0.22"/></svg>`;
   return `data:image/svg+xml,${encodeURIComponent(svg)}`;
 }
