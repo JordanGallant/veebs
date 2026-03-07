@@ -104,7 +104,8 @@ function render(container) {
       // Load existing agent or create a new one
       status.textContent = 'Setting up your agent...';
       const agentName = displayName || store.name || 'My Twin';
-      await loadOrCreateAgent(agentName, store.characterProfile);
+      const agent = await loadOrCreateAgent(agentName, store.characterProfile);
+      if (agent?.name) store.name = agent.name;
 
       status.textContent = 'Success! Redirecting...';
       panel.classList.remove('is-visible');
