@@ -32,11 +32,12 @@ export function registerWelcome() {
 
 function render(container) {
   // Auto-restore session — skip to dashboard if already logged in
-  // But if pendingTwinBirth is set (returning from Stripe), continue onboarding
-  if (restoreSession() && !store.pendingTwinBirth) {
+  // But allow through if they still need to record or are returning from Stripe
+  if (restoreSession() && !store.pendingTwinBirth && !store.pendingRecording) {
     navigate('dashboard');
     return;
   }
+  store.pendingRecording = false;
 
   cam = createAsciiCamera();
 

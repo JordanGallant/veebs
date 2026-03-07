@@ -112,12 +112,13 @@ function render(container) {
       panel.classList.add('is-exiting');
       exitTimer = window.setTimeout(() => {
         store.asciiTransitionBodyTime = cam ? cam.captureBodyVideoTime() : null;
-        // If coming from twin creation flow, continue to pricing
-        // Otherwise go straight to dashboard
-        if (store.pendingTwinBirth || store.audioBlob || store.characterProfile) {
+        if (store.audioBlob) {
+          // Already recorded — continue to pricing
           navigate('pricing');
         } else {
-          navigate('dashboard');
+          // Haven't done recording yet — get camera + questions first
+          store.pendingRecording = true;
+          navigate('welcome');
         }
       }, 420);
     } catch (err) {
