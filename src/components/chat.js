@@ -2,24 +2,33 @@ import { el, on, clear } from '../lib/dom.js';
 import { store } from '../lib/store.js';
 import { sendMessage, getChatHistory } from '../lib/api.js';
 
-export function createChat(parent) {
+export function createChat(parent, options = {}) {
+  const { initialScrollTop } = options;
+  const hasInitialScroll = Number.isFinite(initialScrollTop);
   const log = el('div', { class: 'chat-log' });
   const input = el('input', { class: 'input', type: 'text', placeholder: 'Type a message...' });
   const sendBtn = el('button', { class: 'btn' }, 'Send');
   const row = el('div', { class: 'chat-input-row' }, input, sendBtn);
-  const wrapper = el('div', { class: 'tab-content' }, log, row);
+  const wrapper = el('div', { class: 'chat-panel' }, log, row);
   parent.appendChild(wrapper);
 
-  function appendMessage(role, content) {
+  function appendMessage(role, content, autoScroll = true) {
     const cls = role === 'user' ? 'chat-msg chat-msg--user' : 'chat-msg chat-msg--twin';
     log.appendChild(el('div', { class: cls }, content));
-    log.scrollTop = log.scrollHeight;
+    if (autoScroll) {
+      log.scrollTop = log.scrollHeight;
+    }
   }
 
   function renderMessages() {
     clear(log);
     for (const msg of store.messages) {
-      appendMessage(msg.role, msg.content);
+      appendMessage(msg.role, msg.content, false);
+    }
+    if (hasInitialScroll) {
+      log.scrollTop = initialScrollTop;
+    } else {
+      log.scrollTop = log.scrollHeight;
     }
   }
 
@@ -81,4 +90,6 @@ export function createChat(parent) {
   }
 
   renderMessages();
+
+  return { scrollEl: log };
 }

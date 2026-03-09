@@ -79,12 +79,25 @@ function render(container) {
   const profilePanel = el('div', { class: 'profile-panel' }, profilePanelImage);
 
   const tabBar = el('div', { class: 'tabs' });
-  const tabContent = el('div', { class: 'tab-content' });
+  const tabContent = el('div', { class: 'tab-content dashboard-tab-content' });
 
   const tabs = ['chat', 'wallet', 'connect'];
   let activeTab = 'wallet';
   let settingsOpen = false;
   let profileExpanded = false;
+  const scrollPositions = {
+    chat: null,
+    wallet: null,
+    connect: null,
+    settings: null,
+  };
+  let activePanelKey = null;
+  let activePanelScroller = null;
+
+  function saveActiveScrollPosition() {
+    if (!activePanelKey || !activePanelScroller) return;
+    scrollPositions[activePanelKey] = activePanelScroller.scrollTop;
+  }
 
   function toggleProfileExpanded() {
     profileExpanded = !profileExpanded;
@@ -115,6 +128,7 @@ function render(container) {
 
       on(btn, 'click', () => {
         if (!settingsOpen && tab === activeTab) return;
+        saveActiveScrollPosition();
         activeTab = tab;
         settingsOpen = false;
         renderTabs();
@@ -132,6 +146,7 @@ function render(container) {
     }, '⚙');
 
     on(settingsBtn, 'click', () => {
+      saveActiveScrollPosition();
       settingsOpen = !settingsOpen;
       renderTabs();
       renderTabContent();
@@ -143,26 +158,41 @@ function render(container) {
 
   function renderTabContent() {
     clear(tabContent);
+    const panelKey = settingsOpen ? 'settings' : activeTab;
+    const isChatPanel = panelKey === 'chat';
+    tabContent.classList.toggle('dashboard-tab-content--chat', isChatPanel);
+    let panelScroller = tabContent;
 
     if (settingsOpen) {
       createSettings(tabContent);
-      return;
+    } else {
+      switch (activeTab) {
+        case 'chat': {
+          const chat = createChat(tabContent, { initialScrollTop: scrollPositions.chat });
+          panelScroller = chat.scrollEl;
+          break;
+        }
+        case 'wallet':
+          createWallet(tabContent);
+          break;
+        case 'connect':
+          createWhatsAppQR(tabContent);
+          break;
+      }
     }
 
-    switch (activeTab) {
-      case 'chat':
-        createChat(tabContent);
-        break;
-      case 'wallet':
-        createWallet(tabContent);
-        break;
-      case 'connect':
-        createWhatsAppQR(tabContent);
-        break;
+    activePanelKey = panelKey;
+    activePanelScroller = panelScroller;
+    const savedScrollTop = scrollPositions[panelKey];
+    if (savedScrollTop != null) {
+      activePanelScroller.scrollTop = savedScrollTop;
+    } else if (!isChatPanel) {
+      activePanelScroller.scrollTop = 0;
     }
   }
 
-  const dashboard = el('div', { class: 'dashboard' }, header, profilePanel, tabBar, tabContent);
+  const dashboardChrome = el('div', { class: 'dashboard-chrome' }, header, profilePanel, tabBar);
+  const dashboard = el('div', { class: 'dashboard' }, dashboardChrome, tabContent);
   container.appendChild(dashboard);
 
   renderTabs();
@@ -188,7 +218,7 @@ function render(container) {
 }
 
 function createSettings(parent) {
-  const wrapper = el('div', { class: 'tab-content settings-panel' });
+  const wrapper = el('div', { class: 'settings-panel' });
 
   const characterSection = el('div', { class: 'settings-section' });
   characterSection.appendChild(el('p', { class: 'bold' }, 'Character'));

@@ -42,6 +42,9 @@ h1, h2, h3,
 #app {
   position: relative;
   min-height: 100%;
+  height: 100%;
+  min-height: 100dvh;
+  height: 100dvh;
   display: flex;
   flex-direction: column;
 }
@@ -76,6 +79,7 @@ h1, h2, h3,
   flex: 1;
   display: flex;
   flex-direction: column;
+  min-height: 0;
 }
 
 a {
@@ -292,7 +296,8 @@ a {
   display: flex;
   flex-direction: column;
   gap: var(--space-sm);
-  padding: var(--space-md) 0;
+  padding: var(--space-md) 0 calc(84px + var(--space-sm) + env(safe-area-inset-bottom, 0px));
+  min-height: 0;
 }
 
 .chat-msg {
@@ -317,10 +322,21 @@ a {
 .chat-input-row {
   display: flex;
   gap: var(--space-sm);
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: calc(var(--space-sm) + env(safe-area-inset-bottom, 0px));
+  z-index: 1;
+  background: transparent;
 }
 
 .chat-input-row .input {
   flex: 1;
+  background: var(--color-bg);
+}
+
+.chat-input-row .btn {
+  border: 1px solid var(--color-bg);
 }
 
 /* --- Character profile --- */
@@ -345,8 +361,8 @@ a {
   display: flex;
   flex-direction: column;
   gap: var(--space-sm);
-  border: 1px solid color-mix(in srgb, var(--color-fg) 15%, transparent);
-  border-radius: var(--radius);
+  border: none;
+  border-radius: 0;
   background: color-mix(in srgb, var(--color-bg) 94%, transparent);
   padding: var(--space-md);
 }
@@ -859,11 +875,24 @@ a {
   display: flex;
   flex-direction: column;
   flex: 1;
+  min-height: 0;
+  height: 100%;
+  overflow: hidden;
   max-width: 640px;
   width: 100%;
   margin: 0 auto;
-  padding: var(--space-lg) var(--space-md);
+  padding: var(--space-lg) var(--space-md) 0;
+  gap: 0;
+}
+
+.dashboard-chrome {
+  position: sticky;
+  top: 0;
+  z-index: 4;
+  display: flex;
+  flex-direction: column;
   gap: var(--space-md);
+  background: var(--color-bg);
 }
 
 .settings-panel {
@@ -948,6 +977,24 @@ a {
   flex: 1;
   display: flex;
   flex-direction: column;
+  min-height: 0;
+}
+
+.dashboard-tab-content {
+  overflow-y: auto;
+}
+
+.dashboard-tab-content--chat {
+  overflow: hidden;
+}
+
+.chat-panel {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  position: relative;
 }
 
 /* --- Connection status --- */
