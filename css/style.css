@@ -1,8 +1,8 @@
 :root {
   --color-fg: #2b2927;
-  --color-bg: #cbcaf6;
+  --color-bg: #c6c6f1;
   --font: 'IBM Plex Mono', monospace;
-  --font-header: 'Stylish', cursive;
+  --font-header: 'Stylish', default;
   --font-normal: 400;
   --font-bold: 700;
   --radius: 4px;
