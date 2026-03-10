@@ -45,6 +45,15 @@ function buildCharacterProfile(answers) {
   ].join(' ');
 }
 
+function buildAnswerRecord(answers) {
+  return {
+    goals: answers[0] || '',
+    hobbies: answers[1] || '',
+    priorities: answers[2] || '',
+    duties: answers[3] || '',
+  };
+}
+
 function render(container) {
   cam = createAsciiCamera({
     transitionBodyTime: store.asciiTransitionBodyTime,
@@ -136,11 +145,14 @@ function render(container) {
     }
 
     store.characterProfile = buildCharacterProfile(answers);
+    store.onboardingMode = 'typed';
+    store.onboardingAnswers = buildAnswerRecord(answers);
+    store.hasAnsweredQuestions = true;
     panel.classList.remove('is-visible');
     panel.classList.add('is-exiting');
     exitTimer = window.setTimeout(() => {
       store.asciiTransitionBodyTime = cam ? cam.captureBodyVideoTime() : null;
-      navigate(store.token ? 'pricing' : 'auth');
+      navigate(store.user ? 'pricing' : 'auth');
     }, 420);
   });
 

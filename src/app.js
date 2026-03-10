@@ -8,35 +8,11 @@ import { registerVerifyEmail } from './screens/verify-email.js';
 import { registerBirthing } from './screens/birthing.js';
 import { registerDashboard } from './screens/dashboard.js';
 import { registerAuth } from './screens/auth.js';
-import { store } from './lib/store.js';
-import { restoreSession } from './lib/api.js';
+import { store, restorePendingSignup } from './lib/store.js';
+import { restoreSession, markOnboardingPaid } from './lib/api.js';
+import { applyPlanSelection } from './lib/plans.js';
 
 initFavicon();
-
-// Always restore session from localStorage on page load
-restoreSession();
-
-// Handle Stripe payment return
-const urlParams = new URLSearchParams(window.location.search);
-if (urlParams.get('payment') === 'success') {
-  // Clean up URL
-  window.history.replaceState({}, '', window.location.pathname + window.location.hash);
-  // Restore session and go to birthing/dashboard
-  if (restoreSession()) {
-    const pendingPlan = localStorage.getItem('ct_pending_plan');
-    if (pendingPlan) {
-      localStorage.removeItem('ct_pending_plan');
-      store.selectedPlan = pendingPlan;
-      store.pendingTwinBirth = true;
-      // Go to welcome to get camera access, then recording → birthing
-      window.location.hash = 'welcome';
-    } else {
-      window.location.hash = 'dashboard';
-    }
-  }
-} else if (urlParams.get('payment') === 'cancelled') {
-  window.history.replaceState({}, '', window.location.pathname + window.location.hash);
-}
 
 registerWelcome();
 registerRecording();
@@ -47,13 +23,44 @@ registerBirthing();
 registerAuth();
 registerDashboard();
 
-const app = document.getElementById('app');
-if (app) {
-  const asciiLayer = document.createElement('div');
-  asciiLayer.id = 'ascii-layer';
-  const screenContainer = document.createElement('div');
-  screenContainer.id = 'screen-container';
-  app.appendChild(asciiLayer);
-  app.appendChild(screenContainer);
-  initRouter(screenContainer, asciiLayer);
+async function init() {
+  await restoreSession();
+  restorePendingSignup();
+
+  const urlParams = new URLSearchParams(window.location.search);
+  if (urlParams.get('payment') === 'success') {
+    window.history.replaceState({}, '', window.location.pathname + window.location.hash);
+    const pendingPlan = localStorage.getItem('ct_pending_plan');
+
+    if (pendingPlan && store.user) {
+      localStorage.removeItem('ct_pending_plan');
+      applyPlanSelection(pendingPlan);
+      try {
+        await markOnboardingPaid(pendingPlan);
+      } catch (err) {
+        console.warn('Could not mark onboarding as paid:', err.message);
+      }
+      store.pendingTwinBirth = true;
+      window.location.hash = 'birthing';
+    } else if (!store.user && pendingPlan) {
+      window.location.hash = 'auth?mode=signin';
+    } else if (store.user) {
+      window.location.hash = 'dashboard';
+    }
+  } else if (urlParams.get('payment') === 'cancelled') {
+    window.history.replaceState({}, '', window.location.pathname + window.location.hash);
+  }
+
+  const app = document.getElementById('app');
+  if (app) {
+    const asciiLayer = document.createElement('div');
+    asciiLayer.id = 'ascii-layer';
+    const screenContainer = document.createElement('div');
+    screenContainer.id = 'screen-container';
+    app.appendChild(asciiLayer);
+    app.appendChild(screenContainer);
+    initRouter(screenContainer, asciiLayer);
+  }
 }
+
+init();

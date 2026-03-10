@@ -184,6 +184,11 @@ function render(container) {
     clearInterval(timerInterval);
     recDot.style.display = 'none';
     cam.setWave(false);
+    store.onboardingMode = 'recorded';
+    store.onboardingAnswers = {
+      prompts: [...TWIN_QUESTIONS],
+    };
+    store.hasAnsweredQuestions = true;
 
     if (store.mediaStream) {
       for (const track of store.mediaStream.getTracks()) track.stop();
@@ -196,12 +201,8 @@ function render(container) {
       if (store.pendingTwinBirth) {
         // Already paid (returning from Stripe) — go straight to birthing
         navigate('birthing');
-      } else if (store.token && store.agentId) {
-        // Existing user re-doing onboarding — skip to birthing
-        store.pendingTwinBirth = true;
-        navigate('birthing');
       } else {
-        navigate(store.token ? 'pricing' : 'auth');
+        navigate(store.user ? 'pricing' : 'auth');
       }
     }, 420);
   });

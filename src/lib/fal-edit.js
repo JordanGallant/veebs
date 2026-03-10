@@ -1,3 +1,5 @@
+import { store } from './store.js';
+
 function blobToDataUrl(blob) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -20,7 +22,11 @@ export async function createCyborgPortraitFromSnapshot(snapshotBlob) {
   const res = await fetch('/api/fal-edit', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ imageDataUrl }),
+    body: JSON.stringify({
+      imageDataUrl,
+      userId: store.user?.id || null,
+      agentId: store.agentId || null,
+    }),
   });
 
   let payload = null;

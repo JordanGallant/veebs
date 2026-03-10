@@ -233,8 +233,8 @@ function createSettings(parent) {
   );
 
   const signOutBtn = el('button', { class: 'btn btn--danger', type: 'button' }, 'Sign out');
-  on(signOutBtn, 'click', () => {
-    logout();
+  on(signOutBtn, 'click', async () => {
+    await logout();
     resetSession();
     navigate('welcome');
   });

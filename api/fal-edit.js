@@ -47,13 +47,43 @@ function extractError(err) {
   return String(msg);
 }
 
+async function uploadToSupabaseStorage(imageBuffer, contentType, userId, agentId) {
+  const supabaseUrl = process.env.SUPABASE_URL;
+  const supabaseKey = process.env.SUPABASE_SECRET_KEY;
+  if (!supabaseUrl || !supabaseKey) return null;
+
+  const { createClient } = await import('@supabase/supabase-js');
+  const supabase = createClient(supabaseUrl, supabaseKey);
+
+  const ext = contentType.includes('png') ? 'png' : 'jpg';
+  const storagePath = `${userId}/${agentId}.${ext}`;
+
+  const { error } = await supabase.storage
+    .from('profile-images')
+    .upload(storagePath, imageBuffer, {
+      contentType,
+      upsert: true,
+    });
+
+  if (error) {
+    console.warn('Supabase storage upload failed:', error.message);
+    return null;
+  }
+
+  const { data: urlData } = supabase.storage
+    .from('profile-images')
+    .getPublicUrl(storagePath);
+
+  return urlData?.publicUrl || null;
+}
+
 module.exports = async function handler(req, res) {
   if (req.method !== 'POST') {
     res.setHeader('Allow', 'POST');
     return sendJson(res, 405, { error: 'Method not allowed.' });
   }
 
-  const { imageDataUrl } = parseBody(req);
+  const { imageDataUrl, userId, agentId } = parseBody(req);
   if (!imageDataUrl || typeof imageDataUrl !== 'string') {
     return sendJson(res, 400, { error: 'Missing imageDataUrl.' });
   }
@@ -84,7 +114,6 @@ module.exports = async function handler(req, res) {
       const imageBlob = new Blob([buffer], { type: mimeType });
       inputImageUrl = await fal.storage.upload(imageBlob);
     } catch {
-      // Fallback to inline data URL if upload fails.
       inputImageUrl = imageDataUrl;
     }
 
@@ -117,30 +146,46 @@ module.exports = async function handler(req, res) {
     return sendJson(res, 502, { error: `Background removal failed: ${extractError(err)}` });
   }
 
-  const imageUrl =
+  const falImageUrl =
     removeBgResult?.data?.image?.url ||
     removeBgResult?.data?.image ||
     removeBgResult?.data?.images?.[0]?.url ||
     null;
-  if (!imageUrl) {
+  if (!falImageUrl) {
     return sendJson(res, 502, { error: 'Fal background-removal response missing output image URL.' });
   }
 
+  // Fetch the final image so we can upload to Supabase Storage + return base64
+  let imageBuffer = null;
+  let contentType = 'image/png';
   let imageDataResponse = null;
+
   try {
-    const imageRes = await fetch(imageUrl);
+    const imageRes = await fetch(falImageUrl);
     if (imageRes.ok) {
-      const contentType = imageRes.headers.get('content-type') || 'image/png';
+      contentType = imageRes.headers.get('content-type') || 'image/png';
       const arr = await imageRes.arrayBuffer();
-      const base64 = Buffer.from(arr).toString('base64');
+      imageBuffer = Buffer.from(arr);
+      const base64 = imageBuffer.toString('base64');
       imageDataResponse = `data:${contentType};base64,${base64}`;
     }
   } catch {
+    imageBuffer = null;
     imageDataResponse = null;
   }
 
+  // Upload to Supabase Storage for a permanent URL
+  let permanentUrl = null;
+  if (imageBuffer && userId && agentId) {
+    try {
+      permanentUrl = await uploadToSupabaseStorage(imageBuffer, contentType, userId, agentId);
+    } catch (err) {
+      console.warn('Could not upload to Supabase Storage:', err.message);
+    }
+  }
+
   return sendJson(res, 200, {
-    imageUrl,
+    imageUrl: permanentUrl || falImageUrl,
     imageDataUrl: imageDataResponse,
   });
 };

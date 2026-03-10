@@ -114,7 +114,8 @@ function render(container) {
   const actions = el('div', { class: 'welcome-actions' }, btn, secondaryActions);
   const panel = el('div', { class: 'overlay-panel overlay-panel--compact overlay-shell welcome-panel' },
     headingRow, infoWrap, errorBox, actions);
-  const content = el('div', { class: 'welcome-content' }, loginBtn, brandTitle, panel);
+  const topBar = el('div', { class: 'welcome-topbar' }, brandTitle, loginBtn);
+  const content = el('div', { class: 'welcome-content' }, topBar, panel);
 
   const wrapper = el(
     'div',

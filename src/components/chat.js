@@ -48,7 +48,7 @@ export function createChat(parent, options = {}) {
     log.scrollTop = log.scrollHeight;
 
     try {
-      if (!store.token) throw new Error('Not signed in');
+      if (!store.user) throw new Error('Not signed in');
       const data = await sendMessage(text);
       const reply = data.response || "I'm not sure how to respond to that.";
       store.messages.push({ role: 'twin', content: reply });
@@ -73,7 +73,7 @@ export function createChat(parent, options = {}) {
   });
 
   // Load chat history from backend
-  if (store.token) {
+  if (store.user) {
     getChatHistory()
       .then((messages) => {
         if (Array.isArray(messages) && messages.length > 0) {
