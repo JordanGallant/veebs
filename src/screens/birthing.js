@@ -4,7 +4,7 @@ import { store } from '../lib/store.js';
 import { createAsciiCamera } from '../components/ascii-camera.js';
 import { animateTypewriter } from '../lib/typewriter.js';
 import { createCyborgPortraitFromSnapshot } from '../lib/fal-edit.js';
-import { saveProfileImage } from '../lib/api.js';
+import { getActiveSessionUser, isEmailVerified, saveProfileImage } from '../lib/api.js';
 
 const BIRTHING_MESSAGES = [
   'Analyzing voice patterns...',
@@ -51,13 +51,14 @@ async function generateAndSavePortrait(status) {
     status.textContent = 'Generating cyborg portrait...';
     const result = await createCyborgPortraitFromSnapshot(photoBlob);
 
-    if (result?.imageUrl) {
-      // Save the fal-generated image URL to the agent in the DB
-      store.photoUrl = result.imageUrl;
+    if (result?.imageUrl || result?.storagePath || result?.blob) {
       store.photoBlob = result.blob || null;
+      store.photoUrl = result.blob ? URL.createObjectURL(result.blob) : null;
 
       try {
-        await saveProfileImage(result.imageUrl);
+        if (result.storagePath) {
+          await saveProfileImage(result.storagePath);
+        }
       } catch (err) {
         console.warn('Could not persist profile image:', err.message);
       }
@@ -68,9 +69,22 @@ async function generateAndSavePortrait(status) {
   }
 }
 
-function render(container) {
+async function render(container) {
   if (!store.pendingTwinBirth) {
     navigate('welcome');
+    return;
+  }
+  const sessionUser = await getActiveSessionUser();
+  if (!sessionUser) {
+    navigate('auth');
+    return;
+  }
+  if (!isEmailVerified(sessionUser)) {
+    navigate('verify-email');
+    return;
+  }
+  if (!store.agentId) {
+    navigate('pricing');
     return;
   }
 

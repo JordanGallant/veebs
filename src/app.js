@@ -8,8 +8,8 @@ import { registerVerifyEmail } from './screens/verify-email.js';
 import { registerBirthing } from './screens/birthing.js';
 import { registerDashboard } from './screens/dashboard.js';
 import { registerAuth } from './screens/auth.js';
-import { store, restorePendingSignup } from './lib/store.js';
-import { restoreSession, markOnboardingPaid } from './lib/api.js';
+import { store, restorePendingSignup, savePendingSignup } from './lib/store.js';
+import { restoreSession, isEmailVerified, markOnboardingPaid } from './lib/api.js';
 import { applyPlanSelection } from './lib/plans.js';
 
 initFavicon();
@@ -32,7 +32,7 @@ async function init() {
     window.history.replaceState({}, '', window.location.pathname + window.location.hash);
     const pendingPlan = localStorage.getItem('ct_pending_plan');
 
-    if (pendingPlan && store.user) {
+    if (pendingPlan && store.user && isEmailVerified(store.user)) {
       localStorage.removeItem('ct_pending_plan');
       applyPlanSelection(pendingPlan);
       try {
@@ -42,6 +42,12 @@ async function init() {
       }
       store.pendingTwinBirth = true;
       window.location.hash = 'birthing';
+    } else if (pendingPlan && store.user && !isEmailVerified(store.user)) {
+      savePendingSignup(
+        store.user.email || store.pendingSignupEmail,
+        store.pendingSignupName || store.name || store.user.user_metadata?.display_name || 'My Twin',
+      );
+      window.location.hash = 'verify-email';
     } else if (!store.user && pendingPlan) {
       window.location.hash = 'auth?mode=signin';
     } else if (store.user) {

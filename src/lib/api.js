@@ -8,6 +8,27 @@ import { store } from './store.js';
 const ONBOARDING_PHOTO_BUCKET = 'onboarding-photos';
 const ONBOARDING_AUDIO_BUCKET = 'onboarding-audio';
 
+export function isEmailVerified(user = store.user) {
+  if (!user) return false;
+  if (Object.prototype.hasOwnProperty.call(user, 'email_confirmed_at')) {
+    return Boolean(user.email_confirmed_at);
+  }
+  return Boolean(user.confirmed_at);
+}
+
+export async function getActiveSessionUser() {
+  const { data: { session }, error } = await supabase.auth.getSession();
+  if (error) throw new Error(error.message);
+
+  if (!session?.user) {
+    store.user = null;
+    return null;
+  }
+
+  store.user = session.user;
+  return session.user;
+}
+
 // ── Auth ──
 
 export async function register(email, password, displayName) {
@@ -18,11 +39,7 @@ export async function register(email, password, displayName) {
   });
   if (error) throw new Error(error.message);
 
-  if (data.session?.user) {
-    store.user = data.session.user;
-  } else {
-    store.user = null;
-  }
+  store.user = data.session?.user || null;
 
   return {
     ...data,
@@ -37,7 +54,7 @@ export async function login(email, password) {
   });
   if (error) throw new Error(error.message);
 
-  store.user = data.user;
+  store.user = data.session?.user || data.user || null;
   return data;
 }
 
@@ -49,7 +66,11 @@ export async function verifySignupCode(email, token) {
   });
   if (error) throw new Error(error.message);
 
-  store.user = data.user;
+  store.user = data.session?.user || data.user || null;
+  const sessionUser = await getActiveSessionUser();
+  if (!sessionUser) {
+    throw new Error('Email verification succeeded but no user session was returned.');
+  }
   return data;
 }
 
@@ -68,10 +89,11 @@ export async function logout() {
 }
 
 export async function restoreSession() {
-  const { data: { session } } = await supabase.auth.getSession();
-  if (!session?.user) return false;
-
-  store.user = session.user;
+  const sessionUser = await getActiveSessionUser();
+  if (!sessionUser) {
+    store.agentId = null;
+    return false;
+  }
 
   try {
     const agents = await getMyAgents();
@@ -130,10 +152,10 @@ export async function loadOrCreateAgent(name, characterProfile) {
 
 // ── Profile Image ──
 
-export async function saveProfileImage(imageUrl) {
+export async function saveProfileImage(imagePath) {
   const { error } = await supabase
     .from('agents')
-    .update({ profile_image_url: imageUrl })
+    .update({ profile_image_url: imagePath })
     .eq('id', store.agentId);
   if (error) throw new Error(error.message);
 }
@@ -145,7 +167,15 @@ export async function getProfileImage() {
     .eq('id', store.agentId)
     .single();
   if (error) throw new Error(error.message);
-  return data?.profile_image_url;
+
+  if (!data?.profile_image_url) return null;
+  if (/^https?:\/\//.test(data.profile_image_url)) return data.profile_image_url;
+
+  const { data: signed, error: signedError } = await supabase.storage
+    .from('profile-images')
+    .createSignedUrl(data.profile_image_url, 60 * 60);
+  if (signedError) throw new Error(signedError.message);
+  return signed?.signedUrl || null;
 }
 
 // ── Chat ──
@@ -213,8 +243,12 @@ export async function saveOnboardingProfile(fields) {
 }
 
 export async function syncOnboardingData() {
-  if (!store.user) {
+  const sessionUser = await getActiveSessionUser();
+  if (!sessionUser) {
     throw new Error('You must be signed in before onboarding data can be stored.');
+  }
+  if (!isEmailVerified(sessionUser)) {
+    throw new Error('Verify your email before continuing.');
   }
 
   const twinName = store.pendingSignupName || store.name || 'My Twin';

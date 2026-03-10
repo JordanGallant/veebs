@@ -2,6 +2,7 @@ import { el, on, clear } from '../lib/dom.js';
 import { navigate, registerScreen } from '../lib/router.js';
 import { store, resetSession } from '../lib/store.js';
 import { logout, getProfileImage } from '../lib/api.js';
+import { PLAN_OPTIONS, applyPlanSelection, getPlanById } from '../lib/plans.js';
 import { createChat } from '../components/chat.js';
 import { createCharacter } from '../components/character.js';
 import { createWallet } from '../components/wallet.js';
@@ -12,6 +13,12 @@ const TAB_LABELS = {
   chat: 'Chat',
   wallet: 'Wallet',
   connect: 'Connect',
+};
+
+const PLAN_TOKEN_QUOTAS = {
+  trial: 100000,
+  monthly: 5555000,
+  yearly: 5555000,
 };
 
 let profileImageUrl = '';
@@ -219,28 +226,335 @@ function render(container) {
 
 function createSettings(parent) {
   const wrapper = el('div', { class: 'settings-panel' });
+  let settingsView = 'main';
 
-  const characterSection = el('div', { class: 'settings-section' });
-  characterSection.appendChild(el('p', { class: 'bold' }, 'Character'));
-  createCharacter(characterSection);
+  function renderSettingsView() {
+    clear(wrapper);
 
-  const billingSection = el(
-    'div',
-    { class: 'settings-section' },
-    el('p', { class: 'bold' }, 'Billing'),
-    el('p', { class: 'secondary text-sm' }, 'Plan: Starter (mock). Next charge: EUR 12.00 on the 1st of each month.'),
-    el('button', { class: 'btn btn--secondary', type: 'button' }, 'Manage Billing'),
-  );
+    if (settingsView === 'billing') {
+      createBillingPage(wrapper, () => {
+        settingsView = 'main';
+        renderSettingsView();
+      });
+      return;
+    }
 
-  const signOutBtn = el('button', { class: 'btn btn--danger', type: 'button' }, 'Sign out');
-  on(signOutBtn, 'click', async () => {
-    await logout();
-    resetSession();
-    navigate('welcome');
-  });
+    const characterSection = el('div', { class: 'settings-section' });
+    characterSection.appendChild(el('p', { class: 'bold' }, 'Character'));
+    createCharacter(characterSection);
 
-  wrapper.append(characterSection, billingSection, signOutBtn);
+    const usageSummary = getBillingUsageSummary();
+    const billingSection = el(
+      'div',
+      { class: 'settings-section settings-section--compact' },
+      el('p', { class: 'bold' }, 'Billing'),
+      el('p', { class: 'secondary' }, `${usageSummary.planLabel} plan`),
+      el('p', { class: 'secondary' }, `${formatTokens(usageSummary.usedTokens)} used this month`),
+    );
+
+    const openBillingBtn = el('button', { class: 'btn btn--secondary', type: 'button' }, 'Open Billing');
+    on(openBillingBtn, 'click', () => {
+      settingsView = 'billing';
+      renderSettingsView();
+    });
+    billingSection.appendChild(openBillingBtn);
+
+    const signOutBtn = el('button', { class: 'btn btn--danger', type: 'button' }, 'Sign out');
+    on(signOutBtn, 'click', async () => {
+      await logout();
+      resetSession();
+      navigate('welcome');
+    });
+
+    wrapper.append(characterSection, billingSection, signOutBtn);
+  }
+
+  renderSettingsView();
   parent.appendChild(wrapper);
+}
+
+function createBillingPage(parent, onBack) {
+  ensureBillingDefaults();
+
+  const page = el('section', { class: 'settings-section billing-page' });
+  const header = el(
+    'div',
+    { class: 'billing-header' },
+    el('button', { class: 'btn btn--secondary billing-back-btn', type: 'button' }, 'Back'),
+    el('p', { class: 'bold' }, 'Billing'),
+  );
+  const subtitle = el('p', { class: 'secondary' }, 'Manage usage, plans, and on-demand controls.');
+
+  const usageFold = el('details', { class: 'billing-fold', open: '' });
+  const usageSummary = el('summary', { class: 'bold billing-fold-summary' }, 'Usage this month');
+  const usageBody = el('div', { class: 'billing-fold-body' });
+  usageFold.append(usageSummary, usageBody);
+
+  const planFold = el('details', { class: 'billing-fold' });
+  const planSummary = el('summary', { class: 'bold billing-fold-summary' }, 'Plan');
+  const planBody = el('div', { class: 'billing-fold-body' });
+  planFold.append(planSummary, planBody);
+
+  const onDemandFold = el('details', { class: 'billing-fold' });
+  const onDemandSummary = el('summary', { class: 'bold billing-fold-summary' }, 'On-demand usage');
+  const onDemandBody = el('div', { class: 'billing-fold-body' });
+  onDemandFold.append(onDemandSummary, onDemandBody);
+
+  const statusLine = el('p', { class: 'secondary' });
+
+  on(header.firstChild, 'click', onBack);
+
+  page.append(header, subtitle, usageFold, planFold, onDemandFold, statusLine);
+  parent.appendChild(page);
+
+  renderUsage();
+  renderPlanControls();
+  renderOnDemandControls();
+
+  function renderUsage() {
+    clear(usageBody);
+
+    const usage = getBillingUsageSummary();
+    const percentUsed = usage.totalTokens > 0
+      ? Math.min(100, Math.round((usage.usedTokens / usage.totalTokens) * 100))
+      : 0;
+
+    usageBody.append(
+      el('div', { class: 'billing-kpi' },
+        el('p', { class: 'bold' }, formatTokens(usage.usedTokens)),
+        el('p', { class: 'secondary' }, `of ${formatTokens(usage.totalTokens)} available`),
+      ),
+      el('div', { class: 'billing-meter' },
+        el('div', {
+          class: 'billing-meter-fill',
+          style: `width:${percentUsed}%;`,
+          role: 'img',
+          'aria-label': `${percentUsed}% of monthly tokens used`,
+        }),
+      ),
+      el('p', { class: 'secondary' }, `${percentUsed}% used. Renews on ${usage.renewsOn}.`),
+      el('p', { class: 'secondary' }, `Current plan: ${usage.planLabel}`),
+    );
+  }
+
+  function renderPlanControls() {
+    clear(planBody);
+
+    const selected = getSelectedPlan();
+    const planNotice = el('p', { class: 'secondary' }, selected
+      ? `${selected.title} is active.`
+      : 'No plan is active.');
+
+    const planList = el('div', { class: 'billing-plan-list' });
+
+    for (const option of PLAN_OPTIONS) {
+      const isCurrent = selected && selected.id === option.id;
+      const row = el(
+        'div',
+        { class: 'billing-plan-row' },
+        el(
+          'div',
+          { class: 'billing-plan-copy' },
+          el('p', { class: 'bold' }, option.title),
+          el('p', { class: 'secondary' }, option.price),
+          el('p', { class: 'secondary' }, option.copy),
+        ),
+      );
+
+      if (isCurrent) {
+        row.appendChild(el('span', { class: 'billing-tag' }, 'Current'));
+      } else {
+        const switchBtn = el('button', { class: 'btn btn--secondary', type: 'button' }, `Switch`);
+        on(switchBtn, 'click', () => {
+          applyPlanSelection(option.id);
+          ensureBillingDefaults();
+          statusLine.textContent = `Plan switched to ${option.title}.`;
+          renderUsage();
+          renderPlanControls();
+        });
+        row.appendChild(switchBtn);
+      }
+
+      planList.appendChild(row);
+    }
+
+    const cancelBtn = el('button', { class: 'btn btn--secondary', type: 'button' }, 'Cancel plan');
+    on(cancelBtn, 'click', () => {
+      store.selectedPlan = null;
+      store.messageQuota = null;
+      store.hasCustomerSupport = false;
+      statusLine.textContent = 'Plan canceled. You can still re-activate anytime.';
+      renderUsage();
+      renderPlanControls();
+    });
+
+    planBody.append(planNotice, planList, cancelBtn);
+  }
+
+  function renderOnDemandControls() {
+    clear(onDemandBody);
+
+    const toggleId = 'on-demand-toggle';
+    const tokenLimitId = 'on-demand-token-limit';
+    const spendLimitId = 'on-demand-spend-limit';
+
+    const onDemandToggle = el('input', {
+      id: toggleId,
+      type: 'checkbox',
+      class: 'billing-checkbox',
+    });
+    onDemandToggle.checked = Boolean(store.onDemandUsageEnabled);
+
+    const toggleLabel = el(
+      'label',
+      { class: 'billing-toggle', for: toggleId },
+      onDemandToggle,
+      el('span', { class: 'bold' }, 'Enable on-demand usage'),
+    );
+
+    const tokenLabel = el('label', { for: tokenLimitId }, 'Monthly extra token limit');
+    const tokenInput = el('input', {
+      class: 'input',
+      id: tokenLimitId,
+      type: 'number',
+      min: '1000',
+      step: '1000',
+    });
+    if (store.onDemandTokenLimit != null) {
+      tokenInput.value = String(store.onDemandTokenLimit);
+    }
+
+    const spendLabel = el('label', { for: spendLimitId }, 'Monthly spend limit (EUR)');
+    const spendInput = el('input', {
+      class: 'input',
+      id: spendLimitId,
+      type: 'number',
+      min: '0',
+      step: '1',
+    });
+    if (store.monthlySpendingLimit != null) {
+      spendInput.value = String(store.monthlySpendingLimit);
+    }
+
+    const inputGrid = el(
+      'div',
+      { class: 'billing-grid' },
+      el('div', { class: 'billing-field' }, tokenLabel, tokenInput),
+      el('div', { class: 'billing-field' }, spendLabel, spendInput),
+    );
+
+    const saveBtn = el('button', { class: 'btn btn--secondary', type: 'button' }, 'Save on-demand settings');
+    const onDemandStatus = el('p', { class: 'secondary' });
+
+    function applyToggleState() {
+      const isEnabled = onDemandToggle.checked;
+      tokenInput.disabled = !isEnabled;
+      spendInput.disabled = !isEnabled;
+      saveBtn.disabled = false;
+      inputGrid.classList.toggle('billing-grid--disabled', !isEnabled);
+      if (!isEnabled) {
+        onDemandStatus.textContent = 'On-demand usage is disabled.';
+      }
+    }
+
+    on(onDemandToggle, 'change', applyToggleState);
+
+    on(saveBtn, 'click', () => {
+      const isEnabled = onDemandToggle.checked;
+      if (!isEnabled) {
+        store.onDemandUsageEnabled = false;
+        statusLine.textContent = 'On-demand usage disabled.';
+        onDemandStatus.textContent = 'On-demand usage is disabled.';
+        renderUsage();
+        return;
+      }
+
+      const tokenRaw = tokenInput.value.trim();
+      const spendRaw = spendInput.value.trim();
+
+      const tokenLimit = Number.parseInt(tokenRaw, 10);
+      if (!Number.isFinite(tokenLimit) || tokenLimit < 1000) {
+        onDemandStatus.textContent = 'Set an extra token limit of at least 1,000.';
+        return;
+      }
+
+      let spendLimit = null;
+      if (spendRaw) {
+        const parsedSpend = Number.parseFloat(spendRaw);
+        if (!Number.isFinite(parsedSpend) || parsedSpend < 0) {
+          onDemandStatus.textContent = 'Spend limit must be 0 or more.';
+          return;
+        }
+        spendLimit = Math.round(parsedSpend * 100) / 100;
+      }
+
+      store.onDemandUsageEnabled = true;
+      store.onDemandTokenLimit = tokenLimit;
+      store.monthlySpendingLimit = spendLimit;
+
+      onDemandStatus.textContent = `On-demand enabled with ${formatTokens(tokenLimit)} extra tokens.`;
+      statusLine.textContent = 'On-demand settings updated.';
+      renderUsage();
+    });
+
+    onDemandBody.append(toggleLabel, inputGrid, saveBtn, onDemandStatus);
+    applyToggleState();
+  }
+}
+
+function ensureBillingDefaults() {
+  if (store.onDemandUsageEnabled == null) {
+    store.onDemandUsageEnabled = false;
+  }
+
+  if (store.onDemandTokenLimit == null) {
+    store.onDemandTokenLimit = 1000000;
+  }
+
+  if (store.monthlyTokenUsage == null) {
+    const plan = getSelectedPlan();
+    const baseTokens = plan ? getPlanTokenQuota(plan.id) : 100000;
+    store.monthlyTokenUsage = Math.round(baseTokens * 0.34);
+  }
+}
+
+function getBillingUsageSummary() {
+  ensureBillingDefaults();
+  const selected = getSelectedPlan();
+  const includedTokens = selected ? getPlanTokenQuota(selected.id) : 0;
+  const onDemandTokens = store.onDemandUsageEnabled ? (store.onDemandTokenLimit || 0) : 0;
+  const totalTokens = includedTokens + onDemandTokens;
+  const now = new Date();
+  const renewsOn = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+
+  return {
+    planLabel: selected ? selected.title : 'No active',
+    usedTokens: store.monthlyTokenUsage || 0,
+    totalTokens,
+    renewsOn: renewsOn.toLocaleDateString('en-US', {
+      month: 'long',
+      day: 'numeric',
+      year: 'numeric',
+    }),
+  };
+}
+
+function getSelectedPlan() {
+  if (store.selectedPlan) {
+    return getPlanById(store.selectedPlan);
+  }
+  if (store.messageQuota) {
+    return PLAN_OPTIONS.find((plan) => plan.messages === store.messageQuota) || null;
+  }
+  return null;
+}
+
+function getPlanTokenQuota(planId) {
+  return PLAN_TOKEN_QUOTAS[planId] || 0;
+}
+
+function formatTokens(value) {
+  return `${Math.max(0, Math.round(value || 0)).toLocaleString('en-US')} tokens`;
 }
 
 function getProfileImageSrc() {

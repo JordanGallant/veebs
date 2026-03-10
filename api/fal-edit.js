@@ -1,5 +1,6 @@
 const EDIT_MODEL_ID = 'fal-ai/flux-2/flash/edit';
 const REMOVE_BG_MODEL_ID = 'fal-ai/imageutils/rembg';
+const { persistExternalProfileImage } = require('./profile-image-storage.js');
 
 const CYBORG_PROMPT =
   'make this person into a beautiful yet terrifying cyborg, shiny sharp silver parts. face and demeanor stay perfectly intact. looking directly into the camera, in an intense and charming way. match clothing and style of input image. ensure face of main subject on input stays the same in output. remove the background. ensure the face stays the same as refrence image.';
@@ -47,36 +48,6 @@ function extractError(err) {
   return String(msg);
 }
 
-async function uploadToSupabaseStorage(imageBuffer, contentType, userId, agentId) {
-  const supabaseUrl = process.env.SUPABASE_URL;
-  const supabaseKey = process.env.SUPABASE_SECRET_KEY;
-  if (!supabaseUrl || !supabaseKey) return null;
-
-  const { createClient } = await import('@supabase/supabase-js');
-  const supabase = createClient(supabaseUrl, supabaseKey);
-
-  const ext = contentType.includes('png') ? 'png' : 'jpg';
-  const storagePath = `${userId}/${agentId}.${ext}`;
-
-  const { error } = await supabase.storage
-    .from('profile-images')
-    .upload(storagePath, imageBuffer, {
-      contentType,
-      upsert: true,
-    });
-
-  if (error) {
-    console.warn('Supabase storage upload failed:', error.message);
-    return null;
-  }
-
-  const { data: urlData } = supabase.storage
-    .from('profile-images')
-    .getPublicUrl(storagePath);
-
-  return urlData?.publicUrl || null;
-}
-
 module.exports = async function handler(req, res) {
   if (req.method !== 'POST') {
     res.setHeader('Allow', 'POST');
@@ -90,6 +61,10 @@ module.exports = async function handler(req, res) {
 
   if (!imageDataUrl.startsWith('data:image/')) {
     return sendJson(res, 400, { error: 'imageDataUrl must be a valid image data URL.' });
+  }
+
+  if (!userId || !agentId) {
+    return sendJson(res, 400, { error: 'Missing userId or agentId for portrait storage.' });
   }
 
   const apiKey = process.env.FAL_KEY;
@@ -155,37 +130,19 @@ module.exports = async function handler(req, res) {
     return sendJson(res, 502, { error: 'Fal background-removal response missing output image URL.' });
   }
 
-  // Fetch the final image so we can upload to Supabase Storage + return base64
-  let imageBuffer = null;
-  let contentType = 'image/png';
-  let imageDataResponse = null;
-
   try {
-    const imageRes = await fetch(falImageUrl);
-    if (imageRes.ok) {
-      contentType = imageRes.headers.get('content-type') || 'image/png';
-      const arr = await imageRes.arrayBuffer();
-      imageBuffer = Buffer.from(arr);
-      const base64 = imageBuffer.toString('base64');
-      imageDataResponse = `data:${contentType};base64,${base64}`;
-    }
-  } catch {
-    imageBuffer = null;
-    imageDataResponse = null;
-  }
+    const persisted = await persistExternalProfileImage({
+      imageUrl: falImageUrl,
+      userId,
+      agentId,
+    });
 
-  // Upload to Supabase Storage for a permanent URL
-  let permanentUrl = null;
-  if (imageBuffer && userId && agentId) {
-    try {
-      permanentUrl = await uploadToSupabaseStorage(imageBuffer, contentType, userId, agentId);
-    } catch (err) {
-      console.warn('Could not upload to Supabase Storage:', err.message);
-    }
+    return sendJson(res, 200, {
+      imageUrl: falImageUrl,
+      storagePath: persisted.storagePath,
+      imageDataUrl: persisted.imageDataUrl,
+    });
+  } catch (err) {
+    return sendJson(res, 502, { error: `Could not store portrait in Supabase: ${err.message}` });
   }
-
-  return sendJson(res, 200, {
-    imageUrl: permanentUrl || falImageUrl,
-    imageDataUrl: imageDataResponse,
-  });
 };

@@ -152,7 +152,7 @@ function render(container) {
     panel.classList.add('is-exiting');
     exitTimer = window.setTimeout(() => {
       store.asciiTransitionBodyTime = cam ? cam.captureBodyVideoTime() : null;
-      navigate(store.user ? 'pricing' : 'auth');
+      navigate('auth');
     }, 420);
   });
 

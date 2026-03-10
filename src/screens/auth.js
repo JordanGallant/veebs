@@ -95,7 +95,7 @@ function render(container) {
   }
 
   on(switchBtn, 'click', () => {
-    if (isLogin && !store.hasAnsweredQuestions && !store.user) {
+    if (isLogin) {
       navigate('welcome');
       return;
     }
@@ -134,7 +134,7 @@ function render(container) {
         const twinName = displayName || store.name || 'My Twin';
         store.name = twinName;
         savePendingSignup(email, twinName);
-        status.textContent = 'We sent a 6-digit code to your email.';
+        status.textContent = 'We sent an 8-digit code to your email.';
         panel.classList.remove('is-visible');
         panel.classList.add('is-exiting');
         exitTimer = window.setTimeout(() => {

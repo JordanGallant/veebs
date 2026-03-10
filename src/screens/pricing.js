@@ -1,9 +1,15 @@
 import { el, on } from '../lib/dom.js';
 import { navigate, registerScreen, getAsciiLayer } from '../lib/router.js';
-import { store } from '../lib/store.js';
+import { store, savePendingSignup } from '../lib/store.js';
 import { createAsciiCamera } from '../components/ascii-camera.js';
 import { animateTypewriter } from '../lib/typewriter.js';
-import { createCheckout, markOnboardingPaid, syncOnboardingData } from '../lib/api.js';
+import {
+  createCheckout,
+  getActiveSessionUser,
+  isEmailVerified,
+  markOnboardingPaid,
+  syncOnboardingData,
+} from '../lib/api.js';
 import { PLAN_OPTIONS, applyPlanSelection } from '../lib/plans.js';
 
 let cam = null;
@@ -27,9 +33,17 @@ export function registerPricing() {
 }
 
 async function render(container) {
-  // If not logged in, redirect to auth first
-  if (!store.user) {
+  const sessionUser = await getActiveSessionUser();
+  if (!sessionUser) {
     navigate('auth');
+    return;
+  }
+  if (!isEmailVerified(sessionUser)) {
+    savePendingSignup(
+      sessionUser.email || store.pendingSignupEmail,
+      store.pendingSignupName || store.name || sessionUser.user_metadata?.display_name || 'My Twin',
+    );
+    navigate('verify-email');
     return;
   }
 

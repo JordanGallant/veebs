@@ -1,9 +1,10 @@
 import { el, on } from '../lib/dom.js';
 import { navigate, registerScreen, getAsciiLayer } from '../lib/router.js';
-import { store, clearPendingSignup, restorePendingSignup } from '../lib/store.js';
+import { store, clearPendingSignup, restorePendingSignup, savePendingSignup } from '../lib/store.js';
 import { createAsciiCamera } from '../components/ascii-camera.js';
 import { animateTypewriter } from '../lib/typewriter.js';
 import {
+  isEmailVerified,
   verifySignupCode,
   resendSignupCode,
   loadOrCreateAgent,
@@ -37,6 +38,13 @@ export function registerVerifyEmail() {
 function render(container) {
   restorePendingSignup();
 
+  if (!store.pendingSignupEmail && store.user?.email && !isEmailVerified(store.user)) {
+    savePendingSignup(
+      store.user.email,
+      store.pendingSignupName || store.name || store.user.user_metadata?.display_name || 'My Twin',
+    );
+  }
+
   if (!store.pendingSignupEmail) {
     navigate('auth');
     return;
@@ -51,7 +59,7 @@ function render(container) {
   const subtitle = el(
     'p',
     { class: 'secondary text-sm' },
-    `Enter the 6-digit code sent to ${store.pendingSignupEmail}.`,
+    `Enter the 8-digit code sent to ${store.pendingSignupEmail}.`,
   );
 
   const codeInput = el('input', {

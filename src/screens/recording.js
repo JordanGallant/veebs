@@ -202,7 +202,7 @@ function render(container) {
         // Already paid (returning from Stripe) — go straight to birthing
         navigate('birthing');
       } else {
-        navigate(store.user ? 'pricing' : 'auth');
+        navigate('auth');
       }
     }, 420);
   });

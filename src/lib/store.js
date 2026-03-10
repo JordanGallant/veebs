@@ -18,6 +18,9 @@ export const store = {
     'My twin is calm, thoughtful, and quietly optimistic. They listen first, then answer with clear and practical guidance in plain English. They enjoy creative work such as writing concepts, naming ideas, and shaping rough plans into concrete next steps. They are reliable with routine duties like organizing tasks, drafting follow-up messages, and keeping priorities visible. Their tone is warm and direct, with light humor when the moment allows it, but they always stay respectful and focused on helping me move forward.',
   balance: 0,
   monthlySpendingLimit: null,
+  onDemandUsageEnabled: false,
+  onDemandTokenLimit: 1000000,
+  monthlyTokenUsage: 0,
   transactions: [],
   messages: [],
   mediaStream: null,
@@ -45,6 +48,9 @@ export function resetSession() {
   store.selectedPlan = null;
   store.messageQuota = null;
   store.hasCustomerSupport = false;
+  store.onDemandUsageEnabled = false;
+  store.onDemandTokenLimit = 1000000;
+  store.monthlyTokenUsage = 0;
   store.pendingTwinBirth = false;
   store.hasAnsweredQuestions = false;
   store.onboardingMode = null;
