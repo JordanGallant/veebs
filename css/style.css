@@ -2,7 +2,7 @@
   --color-fg: #2b2927;
   --color-bg: #c6c6f1;
   --font: 'IBM Plex Mono', monospace;
-  --font-header: 'Stylish', default;
+  --font-header: 'Stylish', system-ui, sans-serif;
   --font-normal: 400;
   --font-bold: 700;
   --radius: 4px;
