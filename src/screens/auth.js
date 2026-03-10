@@ -32,6 +32,8 @@ function render(container) {
     transitionBodyTime: store.asciiTransitionBodyTime,
   });
   store.asciiTransitionBodyTime = null;
+  const authHash = window.location.hash.replace('#', '');
+  const authParams = new URLSearchParams(authHash.split('?')[1] || '');
 
   const heading = el('h1', { class: 'text-lg bold pricing-heading' }, '');
 
@@ -58,13 +60,13 @@ function render(container) {
   const switchBtn = el('button', { class: 'btn btn--secondary', type: 'button' }, 'Already have an account? Sign in');
   const status = el('p', { class: 'secondary text-sm pricing-status' });
 
-  let isLogin = false;
+  let isLogin = authParams.get('mode') === 'signin';
 
   function updateMode() {
     if (isLogin) {
       nameInput.style.display = 'none';
       submitBtn.textContent = 'Sign In';
-      switchBtn.textContent = "Don't have an account? Sign up";
+      switchBtn.textContent = "Don't have a twin? Create one";
       passInput.setAttribute('autocomplete', 'current-password');
       passInput.setAttribute('placeholder', 'Password');
     } else {
@@ -78,6 +80,10 @@ function render(container) {
   }
 
   on(switchBtn, 'click', () => {
+    if (isLogin) {
+      navigate('welcome');
+      return;
+    }
     isLogin = !isLogin;
     updateMode();
   });
@@ -161,7 +167,7 @@ function render(container) {
 
   revealTimer = window.setTimeout(() => {
     panel.classList.add('is-visible');
-    stopHeadingType = animateTypewriter(heading, 'Sign Up', {
+    stopHeadingType = animateTypewriter(heading, isLogin ? 'Sign In' : 'Sign Up', {
       speed: 24,
       swap: false,
     });

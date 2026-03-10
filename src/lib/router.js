@@ -17,7 +17,8 @@ export function getAsciiLayer() {
 
 function getScreenFromHash() {
   const hash = window.location.hash.replace('#', '');
-  return routes.has(hash) ? hash : 'welcome';
+  const [screen] = hash.split('?');
+  return routes.has(screen) ? screen : 'welcome';
 }
 
 async function render() {

@@ -425,6 +425,25 @@ a {
   padding: calc(var(--space-lg) + env(safe-area-inset-top)) var(--space-lg) calc(var(--space-lg) + env(safe-area-inset-bottom));
 }
 
+.welcome-login-link {
+  position: absolute;
+  top: calc(var(--space-sm) + env(safe-area-inset-top));
+  right: var(--space-lg);
+  z-index: 3;
+  min-height: 0;
+  padding: 8px 14px;
+  border-color: color-mix(in srgb, var(--color-fg) 18%, transparent);
+  background: color-mix(in srgb, var(--color-bg) 60%, transparent);
+  color: var(--color-fg);
+  font-size: var(--text-sm);
+  backdrop-filter: blur(10px);
+}
+
+.welcome-login-link:hover {
+  border-color: color-mix(in srgb, var(--color-fg) 30%, transparent);
+  background: color-mix(in srgb, var(--color-bg) 72%, transparent);
+}
+
 .welcome-title {
   font-family: var(--font-header);
   font-size: clamp(48px, 8vw, 120px);
@@ -545,7 +564,7 @@ a {
 
 .welcome-actions > .btn {
   flex: 1 1 220px;
-  min-height: 56px;
+  min-height: 48px;
   padding: var(--space-sm) var(--space-md);
 }
 
@@ -561,14 +580,6 @@ a {
   flex: 0 0 auto;
   min-height: 48px;
   padding: var(--space-sm) var(--space-md);
-}
-
-.btn--login {
-  align-self: flex-end;
-  flex: none;
-  min-height: 0;
-  padding: 2px var(--space-sm);
-  font-size: var(--text-sm);
 }
 
 .recording-panel {
@@ -1057,6 +1068,11 @@ a {
   .welcome-secondary-actions .btn--login {
     flex-basis: auto;
     width: auto;
+  }
+
+  .welcome-login-link {
+    top: calc(var(--space-xs) + env(safe-area-inset-top));
+    right: var(--space-md);
   }
 
   .rec-controls--compact .btn {

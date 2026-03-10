@@ -58,7 +58,7 @@ function render(container) {
 
   const btn = el('button', { class: 'btn' }, 'Allow Access');
   const skipBtn = el('button', { class: 'btn btn--secondary', type: 'button' }, 'Continue without cloning');
-  const loginBtn = el('button', { class: 'btn btn--secondary btn--login', type: 'button' }, 'Sign in / Sign up');
+  const loginBtn = el('button', { class: 'btn welcome-login-link', type: 'button' }, 'Sign in');
 
   on(helpToggle, 'click', () => {
     const isOpen = infoWrap.classList.toggle('is-open');
@@ -106,15 +106,15 @@ function render(container) {
     panel.classList.remove('is-visible');
     panel.classList.add('is-exiting');
     exitTimer = window.setTimeout(() => {
-      navigate('auth');
+      navigate('auth?mode=signin');
     }, 420);
   });
 
-  const secondaryActions = el('div', { class: 'welcome-secondary-actions' }, loginBtn, skipBtn);
+  const secondaryActions = el('div', { class: 'welcome-secondary-actions' }, skipBtn);
   const actions = el('div', { class: 'welcome-actions' }, btn, secondaryActions);
   const panel = el('div', { class: 'overlay-panel overlay-panel--compact overlay-shell welcome-panel' },
     headingRow, infoWrap, errorBox, actions);
-  const content = el('div', { class: 'welcome-content' }, brandTitle, panel);
+  const content = el('div', { class: 'welcome-content' }, loginBtn, brandTitle, panel);
 
   const wrapper = el(
     'div',
