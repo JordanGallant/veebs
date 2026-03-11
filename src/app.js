@@ -1,5 +1,5 @@
 import { initRouter } from './lib/router.js';
-import { initFavicon } from './lib/theme.js';
+import { initFavicon } from './lib/favicon.js';
 import { registerWelcome } from './screens/welcome.js';
 import { registerRecording } from './screens/recording.js';
 import { registerQuestions } from './screens/questions.js';

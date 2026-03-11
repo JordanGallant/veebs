@@ -1,5 +1,5 @@
 import { el } from '../lib/dom.js';
-import { getThemeColor } from '../lib/theme.js';
+import { getThemeColor } from '../lib/colors.js';
 
 export function createWhatsAppQR(parent) {
   const canvas = document.createElement('canvas');
