@@ -1,9 +1,16 @@
 import { el, on } from '../lib/dom.js';
 import { navigate, registerScreen, getAsciiLayer } from '../lib/router.js';
-import { store } from '../lib/store.js';
+import { store, clearPendingSignup, savePendingSignup } from '../lib/store.js';
 import { createAsciiCamera } from '../components/ascii-camera.js';
 import { animateTypewriter } from '../lib/typewriter.js';
-import { register, login, loadOrCreateAgent } from '../lib/api.js';
+import {
+  register,
+  login,
+  loadOrCreateAgent,
+  syncOnboardingData,
+  markOnboardingPaid,
+} from '../lib/api.js';
+import { applyPlanSelection } from '../lib/plans.js';
 
 let cam = null;
 let revealTimer = 0;
@@ -28,12 +35,19 @@ export function registerAuth() {
 }
 
 function render(container) {
+  const authHash = window.location.hash.replace('#', '');
+  const authParams = new URLSearchParams(authHash.split('?')[1] || '');
+  let isLogin = authParams.get('mode') === 'signin';
+
+  if (!isLogin && !store.hasAnsweredQuestions && !store.user) {
+    navigate('welcome');
+    return;
+  }
+
   cam = createAsciiCamera({
     transitionBodyTime: store.asciiTransitionBodyTime,
   });
   store.asciiTransitionBodyTime = null;
-  const authHash = window.location.hash.replace('#', '');
-  const authParams = new URLSearchParams(authHash.split('?')[1] || '');
 
   const heading = el('h1', { class: 'text-lg bold pricing-heading' }, '');
 
@@ -59,8 +73,8 @@ function render(container) {
   const submitBtn = el('button', { class: 'btn', type: 'button' }, 'Create Account');
   const switchBtn = el('button', { class: 'btn btn--secondary', type: 'button' }, 'Already have an account? Sign in');
   const status = el('p', { class: 'secondary text-sm pricing-status' });
-
-  let isLogin = authParams.get('mode') === 'signin';
+  emailInput.value = store.pendingSignupEmail || '';
+  nameInput.value = store.pendingSignupName || (store.name !== 'Unnamed Twin' ? store.name : '');
 
   function updateMode() {
     if (isLogin) {
@@ -77,6 +91,7 @@ function render(container) {
       passInput.setAttribute('placeholder', 'Password (min 6 chars)');
     }
     status.textContent = '';
+    syncHeading();
   }
 
   on(switchBtn, 'click', () => {
@@ -101,30 +116,58 @@ function render(container) {
     status.textContent = isLogin ? 'Signing in...' : 'Creating account...';
 
     try {
+      let needsEmailConfirmation = false;
       if (isLogin) {
         await login(email, password);
+        clearPendingSignup();
+        status.textContent = 'Syncing your onboarding...';
+        if (hasOnboardingData()) {
+          await syncOnboardingData();
+        }
       } else {
-        await register(email, password, displayName || 'CyberTwin User');
+        const signUp = await register(email, password, displayName || 'CyberTwin User');
+        needsEmailConfirmation = Boolean(signUp?.needsEmailConfirmation);
+        if (!needsEmailConfirmation) {
+          throw new Error('Enable email confirmation in Supabase Auth and send the signup template as a code.');
+        }
+
+        const twinName = displayName || store.name || 'My Twin';
+        store.name = twinName;
+        savePendingSignup(email, twinName);
+        status.textContent = 'We sent an 8-digit code to your email.';
+        panel.classList.remove('is-visible');
+        panel.classList.add('is-exiting');
+        exitTimer = window.setTimeout(() => {
+          store.asciiTransitionBodyTime = cam ? cam.captureBodyVideoTime() : null;
+          navigate('verify-email');
+        }, 420);
+        return;
       }
 
-      // Load existing agent or create a new one
-      status.textContent = 'Setting up your agent...';
-      const agentName = displayName || store.name || 'My Twin';
+      status.textContent = 'Setting up your twin...';
+      const agentName = store.pendingSignupName || displayName || store.name || 'My Twin';
       const agent = await loadOrCreateAgent(agentName, store.characterProfile);
-      if (agent?.name) store.name = agent.name;
+      store.name = agent?.name || agentName;
+
+      const pendingPaidPlan = localStorage.getItem('ct_pending_plan');
+      if (pendingPaidPlan) {
+        localStorage.removeItem('ct_pending_plan');
+        applyPlanSelection(pendingPaidPlan);
+        await markOnboardingPaid(pendingPaidPlan);
+        store.pendingTwinBirth = true;
+      }
 
       status.textContent = 'Success! Redirecting...';
       panel.classList.remove('is-visible');
       panel.classList.add('is-exiting');
       exitTimer = window.setTimeout(() => {
         store.asciiTransitionBodyTime = cam ? cam.captureBodyVideoTime() : null;
-        if (store.audioBlob) {
-          // Already recorded — continue to pricing
+        if (store.pendingTwinBirth) {
+          navigate('birthing');
+        } else if (shouldContinueOnboarding()) {
           navigate('pricing');
         } else {
-          // Haven't done recording yet — get camera + questions first
-          store.pendingRecording = true;
-          navigate('welcome');
+          navigate('dashboard');
         }
       }, 420);
     } catch (err) {
@@ -167,9 +210,32 @@ function render(container) {
 
   revealTimer = window.setTimeout(() => {
     panel.classList.add('is-visible');
-    stopHeadingType = animateTypewriter(heading, isLogin ? 'Sign In' : 'Sign Up', {
+    syncHeading();
+  }, 360);
+
+  function syncHeading() {
+    if (!panel.classList.contains('is-visible')) return;
+    if (stopHeadingType) stopHeadingType();
+    stopHeadingType = animateTypewriter(heading, isLogin ? 'Sign In' : 'Set up your twin', {
       speed: 24,
       swap: false,
     });
-  }, 360);
+  }
+}
+
+function hasOnboardingData() {
+  return Boolean(
+    store.hasAnsweredQuestions ||
+    store.onboardingAnswers ||
+    store.photoBlob ||
+    store.audioBlob,
+  );
+}
+
+function shouldContinueOnboarding() {
+  return Boolean(
+    store.pendingTwinBirth ||
+    store.selectedPlan ||
+    hasOnboardingData(),
+  );
 }

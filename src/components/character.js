@@ -1,7 +1,13 @@
 import { el, on } from '../lib/dom.js';
 import { store } from '../lib/store.js';
 
-export function createCharacter(parent) {
+export function createCharacter(parent, options = {}) {
+  const {
+    value = store.characterProfile,
+    onChange = null,
+    actions = null,
+    status = null,
+  } = options;
   const heading = el('p', { class: 'secondary text-sm', style: 'padding-bottom:var(--space-sm)' },
     'Describe your twin in natural English. This text guides how your twin behaves.',
   );
@@ -11,14 +17,18 @@ export function createCharacter(parent) {
   editor.id = 'character-profile';
   editor.className = 'input character-profile';
   editor.rows = 9;
-  editor.value = store.characterProfile;
+  editor.value = value;
   editor.setAttribute('aria-label', 'Character profile text');
 
   on(editor, 'input', () => {
     store.characterProfile = editor.value;
+    if (typeof onChange === 'function') onChange(editor.value);
   });
 
   const wrapper = el('div', { class: 'character-editor', style: 'display:flex;flex-direction:column;gap:var(--space-sm)' }, heading, label, editor);
+  if (actions) wrapper.appendChild(actions);
+  if (status) wrapper.appendChild(status);
 
   parent.appendChild(wrapper);
+  return { editor };
 }

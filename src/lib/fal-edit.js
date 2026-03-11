@@ -1,3 +1,5 @@
+import { store } from './store.js';
+
 function blobToDataUrl(blob) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -14,13 +16,42 @@ function dataUrlToBlob(dataUrl) {
   });
 }
 
+async function persistExternalPortrait(imageUrl) {
+  const res = await fetch('/api/store-profile-image', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      imageUrl,
+      userId: store.user?.id || null,
+      agentId: store.agentId || null,
+    }),
+  });
+
+  let payload = null;
+  try {
+    payload = await res.json();
+  } catch {
+    payload = null;
+  }
+
+  if (!res.ok) {
+    throw new Error(payload?.error || 'Could not store generated portrait.');
+  }
+
+  return payload;
+}
+
 export async function createCyborgPortraitFromSnapshot(snapshotBlob) {
   const imageDataUrl = await blobToDataUrl(snapshotBlob);
 
   const res = await fetch('/api/fal-edit', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ imageDataUrl }),
+    body: JSON.stringify({
+      imageDataUrl,
+      userId: store.user?.id || null,
+      agentId: store.agentId || null,
+    }),
   });
 
   let payload = null;
@@ -34,14 +65,29 @@ export async function createCyborgPortraitFromSnapshot(snapshotBlob) {
     throw new Error(payload?.error || 'Fal edit request failed.');
   }
 
-  if (!payload?.imageUrl) {
-    throw new Error('Fal edit response did not include an image URL.');
+  if (!payload?.storagePath && payload?.imageUrl) {
+    payload = {
+      ...payload,
+      ...await persistExternalPortrait(payload.imageUrl),
+    };
+  }
+
+  if (!payload?.storagePath) {
+    throw new Error('Fal edit response did not include a stored portrait path.');
   }
 
   if (payload.imageDataUrl && typeof payload.imageDataUrl === 'string') {
     const blob = await dataUrlToBlob(payload.imageDataUrl);
-    return { blob, imageUrl: payload.imageUrl };
+    return {
+      blob,
+      imageUrl: payload.imageUrl || null,
+      storagePath: payload.storagePath,
+    };
   }
 
-  return { blob: null, imageUrl: payload.imageUrl };
+  return {
+    blob: null,
+    imageUrl: payload.imageUrl || null,
+    storagePath: payload.storagePath,
+  };
 }

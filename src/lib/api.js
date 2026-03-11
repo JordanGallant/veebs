@@ -1,191 +1,374 @@
 /**
- * API client for agents-demo backend.
- * Handles auth (register/login), chat, and Stripe checkout.
+ * API client — backed by Supabase for auth, database, and storage.
  */
 
+import { supabase } from './supabase.js';
 import { store } from './store.js';
 
-// Change this to your deployed agents-demo URL when ready
-const API_BASE = 'https://agents.jgsleepy.xyz';
+const ONBOARDING_PHOTO_BUCKET = 'onboarding-photos';
+const ONBOARDING_AUDIO_BUCKET = 'onboarding-audio';
 
-function authHeaders() {
-  const headers = { 'Content-Type': 'application/json' };
-  if (store.token) {
-    headers['Authorization'] = `Bearer ${store.token}`;
+export function isEmailVerified(user = store.user) {
+  if (!user) return false;
+  if (Object.prototype.hasOwnProperty.call(user, 'email_confirmed_at')) {
+    return Boolean(user.email_confirmed_at);
   }
-  return headers;
+  return Boolean(user.confirmed_at);
+}
+
+export async function getActiveSessionUser() {
+  const { data: { session }, error } = await supabase.auth.getSession();
+  if (error) throw new Error(error.message);
+
+  if (!session?.user) {
+    store.user = null;
+    return null;
+  }
+
+  store.user = session.user;
+  return session.user;
 }
 
 // ── Auth ──
 
 export async function register(email, password, displayName) {
-  const res = await fetch(`${API_BASE}/api/auth/register`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email, password, displayName }),
+  const { data, error } = await supabase.auth.signUp({
+    email,
+    password,
+    options: { data: { display_name: displayName || 'CyberTwin User' } },
   });
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.error || `Registration failed (${res.status})`);
-  store.token = data.token;
-  store.user = data.user;
-  localStorage.setItem('ct_token', data.token);
-  localStorage.setItem('ct_user', JSON.stringify(data.user));
-  return data;
+  if (error) throw new Error(error.message);
+
+  store.user = data.session?.user || null;
+
+  return {
+    ...data,
+    needsEmailConfirmation: !data.session,
+  };
 }
 
 export async function login(email, password) {
-  const res = await fetch(`${API_BASE}/api/auth/login`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email, password }),
+  const { data, error } = await supabase.auth.signInWithPassword({
+    email,
+    password,
   });
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.error || `Login failed (${res.status})`);
-  store.token = data.token;
-  store.user = data.user;
-  localStorage.setItem('ct_token', data.token);
-  localStorage.setItem('ct_user', JSON.stringify(data.user));
+  if (error) throw new Error(error.message);
+
+  store.user = data.session?.user || data.user || null;
   return data;
 }
 
-export function logout() {
-  store.token = null;
-  store.user = null;
-  store.agentId = 1;
-  localStorage.removeItem('ct_token');
-  localStorage.removeItem('ct_user');
-  localStorage.removeItem('ct_agent_id');
-  localStorage.removeItem('ct_agent');
-}
+export async function verifySignupCode(email, token) {
+  const { data, error } = await supabase.auth.verifyOtp({
+    email,
+    token,
+    type: 'email',
+  });
+  if (error) throw new Error(error.message);
 
-export function restoreSession() {
-  const token = localStorage.getItem('ct_token');
-  const user = localStorage.getItem('ct_user');
-  if (token && user) {
-    store.token = token;
-    try { store.user = JSON.parse(user); } catch { store.user = null; }
-    const agentId = localStorage.getItem('ct_agent_id');
-    if (agentId) store.agentId = parseInt(agentId, 10);
-    const agentJson = localStorage.getItem('ct_agent');
-    if (agentJson) {
-      try {
-        const agent = JSON.parse(agentJson);
-        if (agent.name) store.name = agent.name;
-      } catch {}
-    }
-    return true;
+  store.user = data.session?.user || data.user || null;
+  const sessionUser = await getActiveSessionUser();
+  if (!sessionUser) {
+    throw new Error('Email verification succeeded but no user session was returned.');
   }
-  return false;
-}
-
-// ── Chat ──
-
-export async function sendMessage(message) {
-  const agentId = store.agentId;
-  const res = await fetch(`${API_BASE}/api/agents/${agentId}/chat`, {
-    method: 'POST',
-    headers: authHeaders(),
-    body: JSON.stringify({ message }),
-  });
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.error || `Chat failed (${res.status})`);
   return data;
 }
 
-export async function getChatHistory() {
-  const agentId = store.agentId;
-  const res = await fetch(`${API_BASE}/api/agents/${agentId}/chat`, {
-    headers: authHeaders(),
+export async function resendSignupCode(email) {
+  const { error } = await supabase.auth.resend({
+    email,
+    type: 'signup',
   });
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.error || `Failed to load history (${res.status})`);
-  return data;
+  if (error) throw new Error(error.message);
+}
+
+export async function logout() {
+  await supabase.auth.signOut();
+  store.user = null;
+  store.agentId = null;
+}
+
+export async function restoreSession() {
+  const sessionUser = await getActiveSessionUser();
+  if (!sessionUser) {
+    store.agentId = null;
+    return false;
+  }
+
+  try {
+    const agents = await getMyAgents();
+    if (agents.length > 0) {
+      store.agentId = agents[0].id;
+      if (agents[0].name) store.name = agents[0].name;
+      if (agents[0].personality) store.characterProfile = agents[0].personality;
+    }
+  } catch {
+    // Agent will be created later during onboarding
+  }
+
+  return true;
 }
 
 // ── Agents ──
 
 export async function createAgent(name, description, personality) {
-  const res = await fetch(`${API_BASE}/api/agents`, {
-    method: 'POST',
-    headers: authHeaders(),
-    body: JSON.stringify({
+  const { data, error } = await supabase
+    .from('agents')
+    .insert({
+      user_id: store.user.id,
       name,
       description: description || '',
       personality: personality || '',
-      rocks: 0,
-    }),
-  });
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.error || `Agent creation failed (${res.status})`);
-  // Set this as the active agent
+    })
+    .select()
+    .single();
+  if (error) throw new Error(error.message);
+
   store.agentId = data.id;
-  localStorage.setItem('ct_agent_id', String(data.id));
-  localStorage.setItem('ct_agent', JSON.stringify(data));
   return data;
 }
 
 export async function getMyAgents() {
-  const res = await fetch(`${API_BASE}/api/agents`, {
-    headers: authHeaders(),
-  });
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.error || `Failed to fetch agents (${res.status})`);
-  return data;
+  const { data, error } = await supabase
+    .from('agents')
+    .select('*')
+    .eq('user_id', store.user.id)
+    .order('created_at', { ascending: true });
+  if (error) throw new Error(error.message);
+  return data || [];
 }
 
 export async function loadOrCreateAgent(name, characterProfile) {
-  // Check if user already has an agent
   try {
     const agents = await getMyAgents();
-    if (Array.isArray(agents) && agents.length > 0) {
-      const agent = agents[0];
-      store.agentId = agent.id;
-      localStorage.setItem('ct_agent_id', String(agent.id));
-      localStorage.setItem('ct_agent', JSON.stringify(agent));
-      return agent;
+    if (agents.length > 0) {
+      store.agentId = agents[0].id;
+      if (agents[0].name) store.name = agents[0].name;
+      if (agents[0].personality) store.characterProfile = agents[0].personality;
+      return agents[0];
     }
   } catch {
     // Fall through to create
   }
-
-  // Create a new agent
   return createAgent(name, 'CyberTwin agent', characterProfile || '');
+}
+
+export async function saveAgentName(name) {
+  const trimmedName = name.trim();
+  if (!trimmedName) {
+    throw new Error('Twin name cannot be empty.');
+  }
+
+  let agentId = store.agentId;
+  if (!agentId) {
+    const agent = await loadOrCreateAgent(trimmedName, store.characterProfile);
+    agentId = agent.id;
+  }
+
+  const { data, error } = await supabase
+    .from('agents')
+    .update({ name: trimmedName })
+    .eq('id', agentId)
+    .select('id, name')
+    .single();
+  if (error) throw new Error(error.message);
+
+  store.agentId = data.id;
+  store.name = data.name || trimmedName;
+  return data;
+}
+
+export async function saveAgentCharacterProfile(characterProfile) {
+  const trimmedProfile = characterProfile.trim();
+  if (!trimmedProfile) {
+    throw new Error('Character profile cannot be empty.');
+  }
+
+  let agentId = store.agentId;
+  if (!agentId) {
+    const agent = await loadOrCreateAgent(store.name || 'My Twin', trimmedProfile);
+    agentId = agent.id;
+  }
+
+  const { data, error } = await supabase
+    .from('agents')
+    .update({ personality: trimmedProfile })
+    .eq('id', agentId)
+    .select('id, personality')
+    .single();
+  if (error) throw new Error(error.message);
+
+  store.agentId = data.id;
+  store.characterProfile = data.personality || trimmedProfile;
+  return data;
 }
 
 // ── Profile Image ──
 
-export async function saveProfileImage(imageUrl) {
-  const agentId = store.agentId;
-  const res = await fetch(`${API_BASE}/api/agents/${agentId}/profile-image`, {
-    method: 'POST',
-    headers: authHeaders(),
-    body: JSON.stringify({ imageUrl }),
-  });
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.error || `Failed to save image (${res.status})`);
-  return data;
+export async function saveProfileImage(imagePath) {
+  const { error } = await supabase
+    .from('agents')
+    .update({ profile_image_url: imagePath })
+    .eq('id', store.agentId);
+  if (error) throw new Error(error.message);
 }
 
 export async function getProfileImage() {
-  const agentId = store.agentId;
-  const res = await fetch(`${API_BASE}/api/agents/${agentId}/profile-image`, {
-    headers: authHeaders(),
-  });
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.error || `Failed to get image (${res.status})`);
-  return data.imageUrl;
+  const { data, error } = await supabase
+    .from('agents')
+    .select('profile_image_url')
+    .eq('id', store.agentId)
+    .single();
+  if (error) throw new Error(error.message);
+
+  if (!data?.profile_image_url) return null;
+  if (/^https?:\/\//.test(data.profile_image_url)) return data.profile_image_url;
+
+  const { data: signed, error: signedError } = await supabase.storage
+    .from('profile-images')
+    .createSignedUrl(data.profile_image_url, 60 * 60);
+  if (signedError) throw new Error(signedError.message);
+  return signed?.signedUrl || null;
 }
 
-// ── Stripe Checkout ──
+// ── Chat ──
+
+export async function sendMessage(message) {
+  const { error: insertErr } = await supabase.from('chat_messages').insert({
+    agent_id: store.agentId,
+    user_id: store.user.id,
+    role: 'user',
+    content: message,
+  });
+  if (insertErr) throw new Error(insertErr.message);
+
+  // TODO: replace with an LLM call (Supabase Edge Function, OpenAI, etc.)
+  const reply = "I hear you. LLM integration is not wired up yet — stay tuned.";
+
+  await supabase.from('chat_messages').insert({
+    agent_id: store.agentId,
+    user_id: store.user.id,
+    role: 'assistant',
+    content: reply,
+  });
+
+  return { response: reply };
+}
+
+export async function getChatHistory() {
+  const { data, error } = await supabase
+    .from('chat_messages')
+    .select('*')
+    .eq('agent_id', store.agentId)
+    .order('created_at', { ascending: true });
+  if (error) throw new Error(error.message);
+  return data || [];
+}
+
+// ── Profile ──
+
+export async function updateProfile(fields) {
+  const { error } = await supabase
+    .from('profiles')
+    .update(fields)
+    .eq('id', store.user.id);
+  if (error) throw new Error(error.message);
+}
+
+export async function getProfile() {
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('*')
+    .eq('id', store.user.id)
+    .single();
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+export async function saveOnboardingProfile(fields) {
+  const { error } = await supabase
+    .from('profiles')
+    .upsert({
+      id: store.user.id,
+      ...fields,
+    }, { onConflict: 'id' });
+  if (error) throw new Error(error.message);
+}
+
+export async function syncOnboardingData() {
+  const sessionUser = await getActiveSessionUser();
+  if (!sessionUser) {
+    throw new Error('You must be signed in before onboarding data can be stored.');
+  }
+  if (!isEmailVerified(sessionUser)) {
+    throw new Error('Verify your email before continuing.');
+  }
+
+  const twinName = store.pendingSignupName || store.name || 'My Twin';
+  const profile = {
+    twin_name: twinName,
+    onboarding_mode: store.onboardingMode,
+    onboarding_answers: store.onboardingAnswers,
+    onboarding_character_profile: store.characterProfile || null,
+    onboarding_updated_at: new Date().toISOString(),
+  };
+
+  if (store.photoBlob) {
+    profile.onboarding_photo_path = await uploadOnboardingBlob(
+      ONBOARDING_PHOTO_BUCKET,
+      buildOnboardingStoragePath('photo', store.photoBlob.type || 'image/jpeg'),
+      store.photoBlob,
+    );
+  }
+
+  if (store.audioBlob) {
+    profile.onboarding_audio_path = await uploadOnboardingBlob(
+      ONBOARDING_AUDIO_BUCKET,
+      buildOnboardingStoragePath('audio', store.audioBlob.type || 'audio/webm'),
+      store.audioBlob,
+    );
+  }
+
+  await saveOnboardingProfile(profile);
+}
+
+export async function markOnboardingPaid(planId) {
+  await saveOnboardingProfile({
+    selected_plan: planId,
+    onboarding_paid_at: new Date().toISOString(),
+  });
+}
+
+// ── Stripe Checkout (stub — needs a backend endpoint / Edge Function) ──
 
 export async function createCheckout(amountUsd, { embedded = false } = {}) {
-  const agentId = store.agentId;
-  const res = await fetch(`${API_BASE}/api/checkout`, {
-    method: 'POST',
-    headers: authHeaders(),
-    body: JSON.stringify({ agentId, amountUsd, chain: 'solana', returnUrl: window.location.origin, embedded }),
-  });
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.error || `Checkout failed (${res.status})`);
-  return data;
+  // TODO: implement via Supabase Edge Function or external backend
+  return {};
+}
+
+function buildOnboardingStoragePath(kind, mimeType) {
+  const ext = extensionForMime(mimeType, kind === 'audio' ? 'webm' : 'jpg');
+  return `${store.user.id}/${kind}.${ext}`;
+}
+
+function extensionForMime(mimeType, fallback) {
+  if (mimeType.includes('png')) return 'png';
+  if (mimeType.includes('jpeg') || mimeType.includes('jpg')) return 'jpg';
+  if (mimeType.includes('webp')) return 'webp';
+  if (mimeType.includes('webm')) return 'webm';
+  if (mimeType.includes('mpeg')) return 'mp3';
+  if (mimeType.includes('ogg')) return 'ogg';
+  return fallback;
+}
+
+async function uploadOnboardingBlob(bucket, path, blob) {
+  const { error } = await supabase.storage
+    .from(bucket)
+    .upload(path, blob, {
+      contentType: blob.type || undefined,
+      upsert: true,
+    });
+
+  if (error) throw new Error(error.message);
+  return path;
 }

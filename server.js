@@ -3,6 +3,8 @@ const fs = require('fs');
 const path = require('path');
 const { URL } = require('url');
 const falEditHandler = require('./api/fal-edit.js');
+const storeProfileImageHandler = require('./api/store-profile-image.js');
+const shareCardsHandler = require('./api/share-cards.js');
 
 const ROOT = __dirname;
 const PORT = Number(process.env.PORT || 3000);
@@ -63,6 +65,34 @@ const server = http.createServer(async (req, res) => {
       for await (const chunk of req) chunks.push(chunk);
       req.body = Buffer.concat(chunks).toString('utf8');
       await falEditHandler(req, res);
+    } catch {
+      res.statusCode = 500;
+      res.setHeader('Content-Type', 'application/json');
+      res.end(JSON.stringify({ error: 'Unexpected server error.' }));
+    }
+    return;
+  }
+
+  if (reqUrl.pathname === '/api/store-profile-image') {
+    try {
+      const chunks = [];
+      for await (const chunk of req) chunks.push(chunk);
+      req.body = Buffer.concat(chunks).toString('utf8');
+      await storeProfileImageHandler(req, res);
+    } catch {
+      res.statusCode = 500;
+      res.setHeader('Content-Type', 'application/json');
+      res.end(JSON.stringify({ error: 'Unexpected server error.' }));
+    }
+    return;
+  }
+
+  if (reqUrl.pathname === '/api/share-cards') {
+    try {
+      const chunks = [];
+      for await (const chunk of req) chunks.push(chunk);
+      req.body = Buffer.concat(chunks).toString('utf8');
+      await shareCardsHandler(req, res);
     } catch {
       res.statusCode = 500;
       res.setHeader('Content-Type', 'application/json');

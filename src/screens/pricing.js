@@ -1,42 +1,16 @@
 import { el, on } from '../lib/dom.js';
 import { navigate, registerScreen, getAsciiLayer } from '../lib/router.js';
-import { store } from '../lib/store.js';
+import { store, savePendingSignup } from '../lib/store.js';
 import { createAsciiCamera } from '../components/ascii-camera.js';
 import { animateTypewriter } from '../lib/typewriter.js';
-import { createCheckout } from '../lib/api.js';
-
-const PRICING_OPTIONS = [
-  {
-    id: 'trial',
-    title: 'Trial',
-    price: 'EUR 10 one-time',
-    copy: 'Get your twin and 100 text messages to try it out.',
-    messages: 100,
-    support: false,
-    walletBonus: 0,
-    amountUsd: 10,
-  },
-  {
-    id: 'monthly',
-    title: 'Monthly',
-    price: 'EUR 55,5 / month',
-    copy: 'Get 5,555 text messages per month and customer support.',
-    messages: 5555,
-    support: true,
-    walletBonus: 0,
-    amountUsd: 55.5,
-  },
-  {
-    id: 'yearly',
-    title: 'Yearly',
-    price: 'EUR 555 / year',
-    copy: 'Get 5,555 text messages per month, customer support, and EUR 55 in your twin wallet.',
-    messages: 5555,
-    support: true,
-    walletBonus: 55,
-    amountUsd: 555,
-  },
-];
+import {
+  createCheckout,
+  getActiveSessionUser,
+  isEmailVerified,
+  markOnboardingPaid,
+  syncOnboardingData,
+} from '../lib/api.js';
+import { PLAN_OPTIONS, applyPlanSelection } from '../lib/plans.js';
 
 let cam = null;
 let revealTimer = 0;
@@ -58,10 +32,18 @@ export function registerPricing() {
   });
 }
 
-function render(container) {
-  // If not logged in, redirect to auth first
-  if (!store.token) {
+async function render(container) {
+  const sessionUser = await getActiveSessionUser();
+  if (!sessionUser) {
     navigate('auth');
+    return;
+  }
+  if (!isEmailVerified(sessionUser)) {
+    savePendingSignup(
+      sessionUser.email || store.pendingSignupEmail,
+      store.pendingSignupName || store.name || sessionUser.user_metadata?.display_name || 'My Twin',
+    );
+    navigate('verify-email');
     return;
   }
 
@@ -79,7 +61,7 @@ function render(container) {
 
   const optionsWrap = el('div', { class: 'pricing-options' });
   const submitBtn = el('button', { class: 'btn', type: 'button', disabled: '' }, 'Select a plan');
-  const skipBtn = el('button', { class: 'btn btn--secondary', type: 'button' }, 'Skip for now');
+  const skipBtn = el('button', { class: 'btn btn--secondary', type: 'button', disabled: '' }, 'Skip for now');
   const status = el('p', { class: 'secondary text-sm pricing-status' });
 
   const actions = el('div', { class: 'pricing-signup' }, submitBtn, skipBtn, status);
@@ -102,9 +84,10 @@ function render(container) {
   }
 
   let selectedOption = null;
+  let onboardingReady = false;
 
   function updateSubmitState() {
-    if (!selectedOption) {
+    if (!onboardingReady || !selectedOption) {
       submitBtn.setAttribute('disabled', '');
       submitBtn.textContent = 'Select a plan';
       return;
@@ -115,7 +98,7 @@ function render(container) {
 
   function renderOptions() {
     optionsWrap.innerHTML = '';
-    for (const option of PRICING_OPTIONS) {
+    for (const option of PLAN_OPTIONS) {
       const btn = el(
         'button',
         {
@@ -140,6 +123,8 @@ function render(container) {
   }
 
   on(skipBtn, 'click', () => {
+    if (!onboardingReady) return;
+    applyPlanSelection('skip');
     store.pendingTwinBirth = true;
     panel.classList.remove('is-visible');
     panel.classList.add('is-exiting');
@@ -162,31 +147,18 @@ function render(container) {
     }, 420);
   }
 
+  async function finalizePaidPlan(planId) {
+    applyPlanSelection(planId);
+    await markOnboardingPaid(planId);
+    proceedToBirthing();
+  }
+
   on(submitBtn, 'click', async () => {
-    if (!selectedOption) return;
+    if (!selectedOption || !onboardingReady) return;
 
     submitBtn.setAttribute('disabled', '');
     skipBtn.setAttribute('disabled', '');
     status.textContent = 'Loading payment...';
-
-    // Store plan info
-    store.selectedPlan = selectedOption.id;
-    store.messageQuota = selectedOption.messages;
-    store.hasCustomerSupport = selectedOption.support;
-
-    if (selectedOption.walletBonus > 0) {
-      store.balance += selectedOption.walletBonus;
-      store.transactions.push({
-        amount: selectedOption.walletBonus,
-        type: 'bonus',
-        date: new Date().toLocaleDateString('en-US', {
-          month: 'short',
-          day: 'numeric',
-          hour: '2-digit',
-          minute: '2-digit',
-        }),
-      });
-    }
 
     try {
       const checkout = await createCheckout(selectedOption.amountUsd, { embedded: true });
@@ -225,19 +197,10 @@ function render(container) {
         stripeCheckout.mount(checkoutDiv);
 
         // Poll for completion (Stripe embedded fires return_url but we intercept)
+        // TODO: poll checkout status via Supabase Edge Function
         const pollInterval = setInterval(async () => {
           try {
-            const session = await fetch(
-              `https://agents.jgsleepy.xyz/api/checkout/status?session_id=${checkout.session_id}`,
-              { headers: { 'Authorization': `Bearer ${store.token}` } }
-            );
-            const data = await session.json();
-            if (data.status === 'complete') {
-              clearInterval(pollInterval);
-              stripeCheckout.destroy();
-              embedWrap.remove();
-              proceedToBirthing();
-            }
+            // Placeholder — wire up status check when Stripe backend is ready
           } catch {}
         }, 2000);
       } else if (checkout.checkout_url) {
@@ -245,8 +208,7 @@ function render(container) {
         localStorage.setItem('ct_pending_plan', selectedOption.id);
         window.location.href = checkout.checkout_url;
       } else {
-        // Stripe not configured — skip payment
-        proceedToBirthing();
+        await finalizePaidPlan(selectedOption.id);
       }
     } catch (err) {
       status.textContent = err.message;
@@ -259,6 +221,7 @@ function render(container) {
   cam.startBody();
   renderOptions();
   updateSubmitState();
+  preparePricing();
   revealTimer = window.setTimeout(() => {
     panel.classList.add('is-visible');
     stopHeadingType = animateTypewriter(heading, 'Choose your plan', {
@@ -266,4 +229,29 @@ function render(container) {
       swap: false,
     });
   }, 360);
+
+  async function preparePricing() {
+    status.textContent = 'Syncing your onboarding...';
+
+    try {
+      if (hasOnboardingPayload()) {
+        await syncOnboardingData();
+      }
+      onboardingReady = true;
+      skipBtn.removeAttribute('disabled');
+      status.textContent = '';
+      updateSubmitState();
+    } catch (err) {
+      status.textContent = err.message;
+    }
+  }
+}
+
+function hasOnboardingPayload() {
+  return Boolean(
+    store.hasAnsweredQuestions ||
+    store.onboardingAnswers ||
+    store.photoBlob ||
+    store.audioBlob,
+  );
 }

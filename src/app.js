@@ -8,35 +8,12 @@ import { registerVerifyEmail } from './screens/verify-email.js';
 import { registerBirthing } from './screens/birthing.js';
 import { registerDashboard } from './screens/dashboard.js';
 import { registerAuth } from './screens/auth.js';
-import { store } from './lib/store.js';
-import { restoreSession } from './lib/api.js';
+import { registerShare } from './screens/share.js';
+import { store, restorePendingSignup, savePendingSignup } from './lib/store.js';
+import { restoreSession, isEmailVerified, markOnboardingPaid } from './lib/api.js';
+import { applyPlanSelection } from './lib/plans.js';
 
 initFavicon();
-
-// Always restore session from localStorage on page load
-restoreSession();
-
-// Handle Stripe payment return
-const urlParams = new URLSearchParams(window.location.search);
-if (urlParams.get('payment') === 'success') {
-  // Clean up URL
-  window.history.replaceState({}, '', window.location.pathname + window.location.hash);
-  // Restore session and go to birthing/dashboard
-  if (restoreSession()) {
-    const pendingPlan = localStorage.getItem('ct_pending_plan');
-    if (pendingPlan) {
-      localStorage.removeItem('ct_pending_plan');
-      store.selectedPlan = pendingPlan;
-      store.pendingTwinBirth = true;
-      // Go to welcome to get camera access, then recording → birthing
-      window.location.hash = 'welcome';
-    } else {
-      window.location.hash = 'dashboard';
-    }
-  }
-} else if (urlParams.get('payment') === 'cancelled') {
-  window.history.replaceState({}, '', window.location.pathname + window.location.hash);
-}
 
 registerWelcome();
 registerRecording();
@@ -46,14 +23,65 @@ registerVerifyEmail();
 registerBirthing();
 registerAuth();
 registerDashboard();
+registerShare();
 
-const app = document.getElementById('app');
-if (app) {
-  const asciiLayer = document.createElement('div');
-  asciiLayer.id = 'ascii-layer';
-  const screenContainer = document.createElement('div');
-  screenContainer.id = 'screen-container';
-  app.appendChild(asciiLayer);
-  app.appendChild(screenContainer);
-  initRouter(screenContainer, asciiLayer);
+function syncSharePathToHash() {
+  const match = window.location.pathname.match(/^\/share\/([^/]+)$/);
+  if (!match?.[1]) return;
+
+  const token = decodeURIComponent(match[1]);
+  const url = new URL(window.location.href);
+  url.pathname = '/';
+  url.hash = `share?token=${encodeURIComponent(token)}`;
+  window.history.replaceState({}, '', `${url.pathname}${url.search}${url.hash}`);
 }
+
+async function init() {
+  await restoreSession();
+  restorePendingSignup();
+
+  const urlParams = new URLSearchParams(window.location.search);
+  if (urlParams.get('payment') === 'success') {
+    window.history.replaceState({}, '', window.location.pathname + window.location.hash);
+    const pendingPlan = localStorage.getItem('ct_pending_plan');
+
+    if (pendingPlan && store.user && isEmailVerified(store.user)) {
+      localStorage.removeItem('ct_pending_plan');
+      applyPlanSelection(pendingPlan);
+      try {
+        await markOnboardingPaid(pendingPlan);
+      } catch (err) {
+        console.warn('Could not mark onboarding as paid:', err.message);
+      }
+      store.pendingTwinBirth = true;
+      window.location.hash = 'birthing';
+    } else if (pendingPlan && store.user && !isEmailVerified(store.user)) {
+      savePendingSignup(
+        store.user.email || store.pendingSignupEmail,
+        store.pendingSignupName || store.name || store.user.user_metadata?.display_name || 'My Twin',
+      );
+      window.location.hash = 'verify-email';
+    } else if (!store.user && pendingPlan) {
+      window.location.hash = 'auth?mode=signin';
+    } else if (store.user) {
+      window.location.hash = 'dashboard';
+    }
+  } else if (urlParams.get('payment') === 'cancelled') {
+    window.history.replaceState({}, '', window.location.pathname + window.location.hash);
+  }
+
+  syncSharePathToHash();
+
+  const app = document.getElementById('app');
+  if (app) {
+    const asciiLayer = document.createElement('div');
+    asciiLayer.id = 'ascii-layer';
+    const screenContainer = document.createElement('div');
+    screenContainer.id = 'screen-container';
+    app.appendChild(asciiLayer);
+    app.appendChild(screenContainer);
+    initRouter(screenContainer, asciiLayer);
+  }
+}
+
+init();

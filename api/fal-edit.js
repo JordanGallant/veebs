@@ -1,5 +1,6 @@
 const EDIT_MODEL_ID = 'fal-ai/flux-2/flash/edit';
 const REMOVE_BG_MODEL_ID = 'fal-ai/imageutils/rembg';
+const { persistExternalProfileImage } = require('./profile-image-storage.js');
 
 const CYBORG_PROMPT =
   'make this person into a beautiful yet terrifying cyborg, shiny sharp silver parts. face and demeanor stay perfectly intact. looking directly into the camera, in an intense and charming way. match clothing and style of input image. ensure face of main subject on input stays the same in output. remove the background. ensure the face stays the same as refrence image.';
@@ -53,13 +54,17 @@ module.exports = async function handler(req, res) {
     return sendJson(res, 405, { error: 'Method not allowed.' });
   }
 
-  const { imageDataUrl } = parseBody(req);
+  const { imageDataUrl, userId, agentId } = parseBody(req);
   if (!imageDataUrl || typeof imageDataUrl !== 'string') {
     return sendJson(res, 400, { error: 'Missing imageDataUrl.' });
   }
 
   if (!imageDataUrl.startsWith('data:image/')) {
     return sendJson(res, 400, { error: 'imageDataUrl must be a valid image data URL.' });
+  }
+
+  if (!userId || !agentId) {
+    return sendJson(res, 400, { error: 'Missing userId or agentId for portrait storage.' });
   }
 
   const apiKey = process.env.FAL_KEY;
@@ -84,7 +89,6 @@ module.exports = async function handler(req, res) {
       const imageBlob = new Blob([buffer], { type: mimeType });
       inputImageUrl = await fal.storage.upload(imageBlob);
     } catch {
-      // Fallback to inline data URL if upload fails.
       inputImageUrl = imageDataUrl;
     }
 
@@ -117,30 +121,28 @@ module.exports = async function handler(req, res) {
     return sendJson(res, 502, { error: `Background removal failed: ${extractError(err)}` });
   }
 
-  const imageUrl =
+  const falImageUrl =
     removeBgResult?.data?.image?.url ||
     removeBgResult?.data?.image ||
     removeBgResult?.data?.images?.[0]?.url ||
     null;
-  if (!imageUrl) {
+  if (!falImageUrl) {
     return sendJson(res, 502, { error: 'Fal background-removal response missing output image URL.' });
   }
 
-  let imageDataResponse = null;
   try {
-    const imageRes = await fetch(imageUrl);
-    if (imageRes.ok) {
-      const contentType = imageRes.headers.get('content-type') || 'image/png';
-      const arr = await imageRes.arrayBuffer();
-      const base64 = Buffer.from(arr).toString('base64');
-      imageDataResponse = `data:${contentType};base64,${base64}`;
-    }
-  } catch {
-    imageDataResponse = null;
-  }
+    const persisted = await persistExternalProfileImage({
+      imageUrl: falImageUrl,
+      userId,
+      agentId,
+    });
 
-  return sendJson(res, 200, {
-    imageUrl,
-    imageDataUrl: imageDataResponse,
-  });
+    return sendJson(res, 200, {
+      imageUrl: falImageUrl,
+      storagePath: persisted.storagePath,
+      imageDataUrl: persisted.imageDataUrl,
+    });
+  } catch (err) {
+    return sendJson(res, 502, { error: `Could not store portrait in Supabase: ${err.message}` });
+  }
 };
