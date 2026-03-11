@@ -105,6 +105,7 @@ function render(container) {
   let activePanelScroller = null;
   let profileScrollWatcherEl = null;
   let lastProfileScrollTop = 0;
+  let lastTouchY = null;
 
   function saveActiveScrollPosition() {
     if (!activePanelKey || !activePanelScroller) return;
@@ -150,6 +151,26 @@ function render(container) {
     profileScrollWatcherEl = element;
     lastProfileScrollTop = element.scrollTop;
     profileScrollWatcherEl.addEventListener('scroll', handleProfileScrollCollapse);
+  }
+
+  function handleProfileWheelCollapse(event) {
+    if (!profileExpanded) return;
+    if (event.deltaY <= 0) return;
+    closeProfileExpanded();
+  }
+
+  function handleProfileTouchStart(event) {
+    lastTouchY = event.touches[0]?.clientY ?? null;
+  }
+
+  function handleProfileTouchMove(event) {
+    if (!profileExpanded || lastTouchY == null) return;
+    const nextTouchY = event.touches[0]?.clientY;
+    if (nextTouchY == null) return;
+    if (nextTouchY < lastTouchY) {
+      closeProfileExpanded();
+    }
+    lastTouchY = nextTouchY;
   }
 
   on(profileImage, 'click', toggleProfileExpanded);
@@ -302,6 +323,10 @@ function render(container) {
   const dashboardChrome = el('div', { class: 'dashboard-chrome' }, header, profilePanel, tabBar);
   const dashboard = el('div', { class: 'dashboard' }, dashboardChrome, tabContent);
   container.appendChild(dashboard);
+
+  on(dashboard, 'wheel', handleProfileWheelCollapse);
+  on(dashboard, 'touchstart', handleProfileTouchStart);
+  on(dashboard, 'touchmove', handleProfileTouchMove);
 
   renderTabs();
   renderTabContent();
