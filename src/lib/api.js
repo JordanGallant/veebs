@@ -452,18 +452,6 @@ export async function createCheckout(amountUsd, { embedded = false } = {}) {
   });
 }
 
-export async function createDeposit(amountUsd, chain = 'solana') {
-  if (!store.agentId) return {};
-  return agentsApiFetch('/api/agents/supabase-deposit', {
-    method: 'POST',
-    body: JSON.stringify({
-      supabase_agent_id: store.agentId,
-      amount_usd: amountUsd,
-      chain,
-    }),
-  });
-}
-
 export async function getWalletBalances() {
   if (!store.agentId) return null;
   return agentsApiFetch(

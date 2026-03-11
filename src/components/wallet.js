@@ -1,6 +1,6 @@
 import { el, on, clear } from '../lib/dom.js';
 import { store } from '../lib/store.js';
-import { createCheckout, createDeposit, getWalletBalances } from '../lib/api.js';
+import { createCheckout, getWalletBalances } from '../lib/api.js';
 
 export function createWallet(parent) {
   // ── Balance Grid ──
@@ -109,8 +109,7 @@ export function createWallet(parent) {
     class: 'input', type: 'number', id: 'deposit-amount',
     min: '1', step: '1', placeholder: '10',
   });
-  const depositBtn = el('button', { class: 'btn' }, 'Deposit via Stripe');
-  const directBtn = el('button', { class: 'btn btn--secondary' }, 'Direct Deposit (Dev)');
+  const depositBtn = el('button', { class: 'btn' }, 'Deposit');
   const depositStatus = el('p', { class: 'secondary text-sm' });
 
   on(depositBtn, 'click', async () => {
@@ -128,43 +127,18 @@ export function createWallet(parent) {
       } else {
         depositStatus.textContent = 'Checkout not available.';
         depositBtn.removeAttribute('disabled');
-        depositBtn.textContent = 'Deposit via Stripe';
+        depositBtn.textContent = 'Deposit';
       }
     } catch (err) {
       depositStatus.textContent = err.message;
       depositBtn.removeAttribute('disabled');
-      depositBtn.textContent = 'Deposit via Stripe';
+      depositBtn.textContent = 'Deposit';
     }
-  });
-
-  on(directBtn, 'click', async () => {
-    const val = parseFloat(amountInput.value);
-    if (isNaN(val) || val <= 0) { depositStatus.textContent = 'Enter an amount.'; return; }
-
-    directBtn.setAttribute('disabled', '');
-    directBtn.textContent = 'Depositing...';
-    depositStatus.textContent = '';
-
-    try {
-      const result = await createDeposit(val);
-      if (result.success) {
-        depositStatus.textContent = `Deposited $${val} USDC. TX: ${(result.tx_hash || '').slice(0, 12)}...`;
-        amountInput.value = '';
-        // Refresh balances
-        refreshBalances();
-      } else {
-        depositStatus.textContent = 'Deposit failed.';
-      }
-    } catch (err) {
-      depositStatus.textContent = err.message;
-    }
-    directBtn.removeAttribute('disabled');
-    directBtn.textContent = 'Direct Deposit (Dev)';
   });
 
   const depositForm = el('div', { class: 'deposit-form' },
     el('div', { style: 'flex:1;display:flex;flex-direction:column;gap:var(--space-xs)' }, amountLabel, amountInput),
-    el('div', { style: 'display:flex;flex-direction:column;gap:var(--space-xs)' }, depositBtn, directBtn),
+    depositBtn,
   );
 
   // ── Rocks Balance ──
