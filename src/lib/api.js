@@ -1,5 +1,6 @@
 /**
- * API client — backed by Supabase for auth, database, and storage.
+ * API client — backed by Supabase for auth/database/storage and
+ * agents.jgsleepy.xyz for agent brains, wallets, and chat.
  */
 
 import { supabase } from './supabase.js';
@@ -7,6 +8,18 @@ import { store, resetSession } from './store.js';
 
 const ONBOARDING_PHOTO_BUCKET = 'onboarding-photos';
 const ONBOARDING_AUDIO_BUCKET = 'onboarding-audio';
+
+const AGENTS_API = 'https://agents.jgsleepy.xyz';
+
+// ── Agents API helpers (no auth needed — endpoints use Supabase IDs) ──
+
+async function agentsApiFetch(path, options = {}) {
+  const headers = { 'Content-Type': 'application/json', ...options.headers };
+  const res = await fetch(`${AGENTS_API}${path}`, { ...options, headers });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(body.error || `Agents API error ${res.status}`);
+  return body;
+}
 
 export function isEmailVerified(user = store.user) {
   if (!user) return false;
@@ -61,6 +74,7 @@ export async function login(email, password) {
   if (error) throw new Error(error.message);
 
   store.user = data.session?.user || data.user || null;
+
   return data;
 }
 
@@ -116,6 +130,9 @@ export async function restoreSession() {
       store.agentId = agents[0].id;
       if (agents[0].name) store.name = agents[0].name;
       if (agents[0].personality) store.characterProfile = agents[0].personality;
+      if (agents[0].solana_address) store.solanaAddress = agents[0].solana_address;
+      if (agents[0].evm_address) store.evmAddress = agents[0].evm_address;
+      if (agents[0].local_agent_id) store.localAgentId = agents[0].local_agent_id;
     }
   } catch {
     // Agent will be created later during onboarding
@@ -155,6 +172,36 @@ export async function createAgent(name, description, personality) {
   if (error) throw new Error(error.message);
 
   store.agentId = data.id;
+
+  // Create wallets + brain mirror via Agents API (no auth needed)
+  try {
+    const walletResult = await agentsApiFetch('/api/agents/create-wallet', {
+      method: 'POST',
+      body: JSON.stringify({
+        supabase_user_id: store.user.id,
+        agent_id: data.id,
+      }),
+    });
+
+    const solana = walletResult.wallets?.solana?.address || walletResult.agent?.solana_address || null;
+    const evm = walletResult.wallets?.evm?.address || walletResult.agent?.evm_address || null;
+    const localAgentId = walletResult.local_agent_id || walletResult.agent?.local_agent_id || null;
+    store.solanaAddress = solana;
+    store.evmAddress = evm;
+    store.localAgentId = localAgentId;
+
+    // Persist wallet addresses + local_agent_id on Supabase agent row
+    const updates = {};
+    if (solana) updates.solana_address = solana;
+    if (evm) updates.evm_address = evm;
+    if (localAgentId) updates.local_agent_id = localAgentId;
+    if (Object.keys(updates).length > 0) {
+      await supabase.from('agents').update(updates).eq('id', data.id);
+    }
+  } catch (err) {
+    console.warn('Could not create agent wallets:', err.message);
+  }
+
   return data;
 }
 
@@ -264,28 +311,26 @@ export async function getProfileImage() {
 // ── Chat ──
 
 export async function sendMessage(message) {
-  const { error: insertErr } = await supabase.from('chat_messages').insert({
-    agent_id: store.agentId,
-    user_id: store.user.id,
-    role: 'user',
-    content: message,
-  });
-  if (insertErr) throw new Error(insertErr.message);
+  if (!store.agentId || !store.user) {
+    throw new Error('Not signed in');
+  }
 
-  // TODO: replace with an LLM call (Supabase Edge Function, OpenAI, etc.)
-  const reply = "I hear you. LLM integration is not wired up yet — stay tuned.";
-
-  await supabase.from('chat_messages').insert({
-    agent_id: store.agentId,
-    user_id: store.user.id,
-    role: 'assistant',
-    content: reply,
+  const data = await agentsApiFetch('/api/agents/supabase-chat', {
+    method: 'POST',
+    body: JSON.stringify({
+      supabase_agent_id: store.agentId,
+      supabase_user_id: store.user.id,
+      message,
+    }),
   });
 
-  return { response: reply };
+  // Backend already saves messages to Supabase
+  return { response: data.response || "I'm not sure how to respond to that." };
 }
 
 export async function getChatHistory() {
+  if (!store.agentId) return [];
+
   const { data, error } = await supabase
     .from('chat_messages')
     .select('*')
@@ -386,11 +431,39 @@ export async function markOnboardingPaid(planId) {
   });
 }
 
-// ── Stripe Checkout (stub — needs a backend endpoint / Edge Function) ──
+// ── Checkout, Deposits & Balances ──
 
 export async function createCheckout(amountUsd, { embedded = false } = {}) {
-  // TODO: implement via Supabase Edge Function or external backend
-  return {};
+  if (!store.agentId) return {};
+  return agentsApiFetch('/api/agents/supabase-checkout', {
+    method: 'POST',
+    body: JSON.stringify({
+      supabase_agent_id: store.agentId,
+      amount_usd: amountUsd,
+      chain: 'solana',
+      return_url: window.location.origin,
+      embedded,
+    }),
+  });
+}
+
+export async function createDeposit(amountUsd, chain = 'solana') {
+  if (!store.agentId) return {};
+  return agentsApiFetch('/api/agents/supabase-deposit', {
+    method: 'POST',
+    body: JSON.stringify({
+      supabase_agent_id: store.agentId,
+      amount_usd: amountUsd,
+      chain,
+    }),
+  });
+}
+
+export async function getWalletBalances() {
+  if (!store.agentId) return null;
+  return agentsApiFetch(
+    `/api/agents/supabase-deposit?supabase_agent_id=${encodeURIComponent(store.agentId)}`,
+  );
 }
 
 function buildOnboardingStoragePath(kind, mimeType) {

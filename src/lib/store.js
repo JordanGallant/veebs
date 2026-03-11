@@ -13,6 +13,11 @@ export const store = {
   ownerReferenceName: '',
   ownerReferenceFallbackName: '',
 
+  // Agents API (agents.jgsleepy.xyz)
+  localAgentId: null,
+  solanaAddress: null,
+  evmAddress: null,
+
   // Twin
   id: null,
   name: DEFAULT_TWIN_NAME,
@@ -70,6 +75,9 @@ export function resetSession({ preservePendingSignup = false } = {}) {
 
   store.user = null;
   store.agentId = null;
+  store.localAgentId = null;
+  store.solanaAddress = null;
+  store.evmAddress = null;
   store.ownerReferenceName = '';
   store.ownerReferenceFallbackName = '';
   store.id = null;

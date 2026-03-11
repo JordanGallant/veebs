@@ -1,29 +1,31 @@
 import { el, on, clear } from '../lib/dom.js';
 import { store } from '../lib/store.js';
-import { createCheckout } from '../lib/api.js';
-
-// Rocky's Solana address — will be dynamic per-agent later
-const AGENT_WALLET = 'AKKohuNbXTRo4hAxsTzMv65njbYA54wspfjDgWj1ifzp';
+import { createCheckout, getWalletBalances } from '../lib/api.js';
 
 export function createWallet(parent) {
+  const AGENT_WALLET = store.solanaAddress || 'No wallet yet';
+  const EVM_WALLET = store.evmAddress || null;
+
   const balanceEl = el('div', { class: 'wallet-balance' }, formatCurrency(store.balance));
 
   // ── QR Code Section ──
-  const qrHeading = el('p', { class: 'text-sm bold' }, 'Agent Wallet');
+  const qrHeading = el('p', { class: 'text-sm bold' }, 'Agent Wallet (Solana)');
   const walletAddr = el('p', {
     class: 'secondary text-xs wallet-address',
     title: 'Click to copy',
     style: 'cursor:pointer;word-break:break-all;',
   }, AGENT_WALLET);
 
-  const qrImg = el('img', {
-    class: 'wallet-qr',
-    src: `https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=solana:${AGENT_WALLET}`,
-    alt: 'Agent wallet QR code',
-    width: '180',
-    height: '180',
-    style: 'display:block;margin:var(--space-sm) auto;image-rendering:pixelated;',
-  });
+  const qrImg = store.solanaAddress
+    ? el('img', {
+      class: 'wallet-qr',
+      src: `https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=solana:${AGENT_WALLET}`,
+      alt: 'Agent wallet QR code',
+      width: '180',
+      height: '180',
+      style: 'display:block;margin:var(--space-sm) auto;image-rendering:pixelated;',
+    })
+    : el('p', { class: 'secondary text-sm', style: 'text-align:center;padding:var(--space-sm)' }, 'Wallet will be created when your twin is born.');
 
   const copyStatus = el('p', { class: 'secondary text-xs', style: 'text-align:center' });
 
@@ -37,8 +39,33 @@ export function createWallet(parent) {
     }
   });
 
-  const qrSection = el('div', { class: 'wallet-qr-section' },
-    qrHeading, qrImg, walletAddr, copyStatus);
+  const evmSection = EVM_WALLET
+    ? el('div', { style: 'padding-top:var(--space-xs)' },
+      el('p', { class: 'text-sm bold' }, 'EVM Wallet (Base Sepolia)'),
+      el('p', {
+        class: 'secondary text-xs wallet-address',
+        title: 'Click to copy',
+        style: 'cursor:pointer;word-break:break-all;',
+      }, EVM_WALLET),
+    )
+    : null;
+
+  if (evmSection) {
+    const evmAddr = evmSection.querySelector('.wallet-address');
+    on(evmAddr, 'click', async () => {
+      try {
+        await navigator.clipboard.writeText(EVM_WALLET);
+        copyStatus.textContent = 'EVM address copied!';
+        setTimeout(() => { copyStatus.textContent = ''; }, 1500);
+      } catch {
+        copyStatus.textContent = 'Copy failed';
+      }
+    });
+  }
+
+  const qrChildren = [qrHeading, qrImg, walletAddr, copyStatus];
+  if (evmSection) qrChildren.push(evmSection);
+  const qrSection = el('div', { class: 'wallet-qr-section' }, ...qrChildren);
 
   // ── Spending Limit ──
   const limitLabel = el('label', { for: 'monthly-limit', class: 'text-sm' }, 'Monthly Spending Limit');
@@ -175,6 +202,25 @@ export function createWallet(parent) {
   parent.appendChild(wrapper);
   renderLimit();
   renderTx();
+
+  // Fetch real balances from Agents API
+  getWalletBalances().then((data) => {
+    if (!data?.balances) return;
+    const solBal = data.balances.solana?.usdc || 0;
+    const evmBal = data.balances.base_sepolia?.usdc || 0;
+    const totalUsdc = solBal + evmBal;
+    store.balance = totalUsdc;
+    balanceEl.textContent = `$${totalUsdc.toFixed(2)} USDC`;
+
+    // Update wallet addresses from backend if we didn't have them
+    if (data.solana_address && !store.solanaAddress) {
+      store.solanaAddress = data.solana_address;
+      walletAddr.textContent = data.solana_address;
+    }
+    if (data.evm_address && !store.evmAddress) {
+      store.evmAddress = data.evm_address;
+    }
+  }).catch(() => {});
 }
 
 function formatCurrency(n) {
