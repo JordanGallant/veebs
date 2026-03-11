@@ -35,7 +35,7 @@ html, body {
 }
 
 h1, h2, h3,
-.dashboard-header .editable-name {
+.dashboard-header .dashboard-title {
   font-family: var(--font-header);
 }
 
@@ -382,23 +382,22 @@ a {
   border-bottom: 1px solid color-mix(in srgb, var(--color-fg) 5%, transparent);
 }
 
-/* --- Inline editable --- */
+/* --- Twin name --- */
 
-.editable-name {
-  background: none;
-  border: none;
-  border-bottom: 1px solid color-mix(in srgb, var(--color-fg) 20%, transparent);
+.dashboard-title {
   color: var(--color-fg);
-  font-family: var(--font-header);
   font-weight: var(--font-bold);
   font-size: var(--text-header-lg);
-  padding: var(--space-xs) 0;
-  outline: none;
-  transition: border-color 0.15s;
+  line-height: 1.1;
 }
 
-.editable-name:focus {
-  border-bottom-color: var(--color-fg);
+.settings-name-input {
+  max-width: 100%;
+}
+
+.settings-name-actions {
+  display: flex;
+  justify-content: flex-start;
 }
 
 /* --- Welcome screen --- */

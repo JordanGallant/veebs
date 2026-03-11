@@ -1,7 +1,7 @@
 import { el, on, clear } from '../lib/dom.js';
 import { navigate, registerScreen } from '../lib/router.js';
 import { store, resetSession } from '../lib/store.js';
-import { logout, getProfileImage } from '../lib/api.js';
+import { logout, getProfileImage, saveAgentName, saveAgentCharacterProfile } from '../lib/api.js';
 import { PLAN_OPTIONS, applyPlanSelection, getPlanById } from '../lib/plans.js';
 import { createChat } from '../components/chat.js';
 import { createCharacter } from '../components/character.js';
@@ -44,25 +44,14 @@ function render(container) {
     profileImageUrl = '';
   }
 
-  const nameInput = document.createElement('input');
-  nameInput.type = 'text';
-  nameInput.className = 'editable-name';
-  nameInput.value = '';
-  nameInput.setAttribute('aria-label', 'Twin name');
+  const nameTitle = el('h1', {
+    class: 'dashboard-title',
+    'aria-label': 'Twin name',
+  });
 
-  on(nameInput, 'input', () => {
-    if (stopNameType) {
-      stopNameType();
-      stopNameType = null;
-    }
-    store.name = nameInput.value;
-  });
-  on(nameInput, 'focus', () => {
-    if (!stopNameType) return;
-    stopNameType();
-    stopNameType = null;
-    nameInput.value = store.name;
-  });
+  function updateDisplayedName(name) {
+    nameTitle.textContent = name && name.trim() ? name : 'Unnamed Twin';
+  }
 
   const profileImage = el('img', {
     class: 'profile-image',
@@ -75,7 +64,7 @@ function render(container) {
     loading: 'eager',
     decoding: 'async',
   });
-  const header = el('div', { class: 'dashboard-header' }, profileImage, nameInput);
+  const header = el('div', { class: 'dashboard-header' }, profileImage, nameTitle);
   const profilePanelImage = el('img', {
     class: 'profile-image-large',
     src: profileImage.getAttribute('src'),
@@ -171,7 +160,7 @@ function render(container) {
     let panelScroller = tabContent;
 
     if (settingsOpen) {
-      createSettings(tabContent);
+      createSettings(tabContent, { updateDisplayedName });
     } else {
       switch (activeTab) {
         case 'chat': {
@@ -206,7 +195,7 @@ function render(container) {
   renderTabContent();
 
   const startingName = store.name || 'Unnamed Twin';
-  stopNameType = animateTypewriter(nameInput, startingName, {
+  stopNameType = animateTypewriter(nameTitle, startingName, {
     delay: 80,
     speed: 30,
     swap: false,
@@ -224,9 +213,11 @@ function render(container) {
   }
 }
 
-function createSettings(parent) {
+function createSettings(parent, { updateDisplayedName }) {
   const wrapper = el('div', { class: 'settings-panel' });
   let settingsView = 'main';
+  let savedName = store.name || '';
+  let savedCharacterProfile = store.characterProfile || '';
 
   function renderSettingsView() {
     clear(wrapper);
@@ -240,8 +231,159 @@ function createSettings(parent) {
     }
 
     const characterSection = el('div', { class: 'settings-section' });
+    const nameLabel = el('label', { for: 'settings-twin-name', class: 'bold' }, 'Twin name');
+    const nameInput = el('input', {
+      id: 'settings-twin-name',
+      class: 'input settings-name-input',
+      type: 'text',
+      value: savedName,
+      placeholder: 'Unnamed Twin',
+    });
+    const nameActions = el('div', { class: 'settings-name-actions' });
+    const nameStatus = el('p', { class: 'secondary text-sm' });
+    let savingName = false;
+
+    function getDraftName() {
+      return nameInput.value.trim();
+    }
+
+    function renderNameActions() {
+      clear(nameActions);
+      const draftName = getDraftName();
+      const hasChanges = draftName !== savedName.trim();
+
+      if (savingName) {
+        const savingBtn = el('button', { class: 'btn btn--secondary', type: 'button', disabled: '' }, 'Saving...');
+        nameActions.appendChild(savingBtn);
+        return;
+      }
+
+      if (!hasChanges) return;
+
+      const saveBtn = el('button', { class: 'btn btn--secondary', type: 'button' }, 'Save');
+      on(saveBtn, 'click', async () => {
+        const nextName = getDraftName();
+        if (!nextName) {
+          nameStatus.textContent = 'Twin name cannot be empty.';
+          renderNameActions();
+          return;
+        }
+
+        const previousSavedName = savedName;
+        const previousStoreName = store.name;
+
+        savingName = true;
+        savedName = nextName;
+        store.name = nextName;
+        updateDisplayedName(nextName);
+        nameStatus.textContent = 'Saving...';
+        renderNameActions();
+
+        try {
+          const agent = await saveAgentName(nextName);
+          savedName = agent.name || nextName;
+          store.name = savedName;
+          nameInput.value = savedName;
+          updateDisplayedName(savedName);
+          nameStatus.textContent = 'Saved.';
+        } catch (err) {
+          savedName = previousSavedName;
+          store.name = previousStoreName;
+          nameInput.value = previousSavedName;
+          updateDisplayedName(previousStoreName);
+          nameStatus.textContent = err.message;
+        } finally {
+          savingName = false;
+          renderNameActions();
+        }
+      });
+      nameActions.appendChild(saveBtn);
+    }
+
+    on(nameInput, 'input', () => {
+      if (stopNameType) {
+        stopNameType();
+        stopNameType = null;
+      }
+      store.name = nameInput.value;
+      updateDisplayedName(nameInput.value);
+      nameStatus.textContent = '';
+      renderNameActions();
+    });
+
+    characterSection.appendChild(nameLabel);
+    characterSection.appendChild(nameInput);
+    characterSection.appendChild(nameActions);
+    characterSection.appendChild(nameStatus);
+    characterSection.appendChild(el('hr', { class: 'divider' }));
     characterSection.appendChild(el('p', { class: 'bold' }, 'Character'));
-    createCharacter(characterSection);
+
+    const characterActions = el('div', { class: 'settings-name-actions' });
+    const characterStatus = el('p', { class: 'secondary text-sm' });
+    let savingCharacter = false;
+
+    function renderCharacterActions(draftValue) {
+      clear(characterActions);
+      const draftProfile = draftValue.trim();
+      const hasChanges = draftProfile !== savedCharacterProfile.trim();
+
+      if (savingCharacter) {
+        characterActions.appendChild(
+          el('button', { class: 'btn btn--secondary', type: 'button', disabled: '' }, 'Saving...'),
+        );
+        return;
+      }
+
+      if (!hasChanges) return;
+
+      const saveBtn = el('button', { class: 'btn btn--secondary', type: 'button' }, 'Save');
+      on(saveBtn, 'click', async () => {
+        const nextProfile = characterEditor.value.trim();
+        if (!nextProfile) {
+          characterStatus.textContent = 'Character profile cannot be empty.';
+          renderCharacterActions(characterEditor.value);
+          return;
+        }
+
+        const previousSavedProfile = savedCharacterProfile;
+
+        savingCharacter = true;
+        savedCharacterProfile = nextProfile;
+        store.characterProfile = nextProfile;
+        characterStatus.textContent = 'Saving...';
+        renderCharacterActions(nextProfile);
+
+        try {
+          const agent = await saveAgentCharacterProfile(nextProfile);
+          savedCharacterProfile = agent.personality || nextProfile;
+          store.characterProfile = savedCharacterProfile;
+          characterEditor.value = savedCharacterProfile;
+          characterStatus.textContent = 'Saved.';
+        } catch (err) {
+          savedCharacterProfile = previousSavedProfile;
+          store.characterProfile = previousSavedProfile;
+          characterEditor.value = previousSavedProfile;
+          characterStatus.textContent = err.message;
+        } finally {
+          savingCharacter = false;
+          renderCharacterActions(characterEditor.value);
+        }
+      });
+
+      characterActions.appendChild(saveBtn);
+    }
+
+    const { editor: characterEditor } = createCharacter(characterSection, {
+      value: savedCharacterProfile,
+      actions: characterActions,
+      status: characterStatus,
+      onChange(value) {
+        characterStatus.textContent = '';
+        renderCharacterActions(value);
+      },
+    });
+    renderNameActions();
+    renderCharacterActions(savedCharacterProfile);
 
     const usageSummary = getBillingUsageSummary();
     const billingSection = el(
@@ -276,11 +418,12 @@ function createSettings(parent) {
 function createBillingPage(parent, onBack) {
   ensureBillingDefaults();
 
+  const backBtn = el('button', { class: 'btn btn--secondary billing-back-btn', type: 'button' }, 'Back');
   const page = el('section', { class: 'settings-section billing-page' });
   const header = el(
     'div',
     { class: 'billing-header' },
-    el('button', { class: 'btn btn--secondary billing-back-btn', type: 'button' }, 'Back'),
+    backBtn,
     el('p', { class: 'bold' }, 'Billing'),
   );
   const subtitle = el('p', { class: 'secondary' }, 'Manage usage, plans, and on-demand controls.');
@@ -302,7 +445,7 @@ function createBillingPage(parent, onBack) {
 
   const statusLine = el('p', { class: 'secondary' });
 
-  on(header.firstChild, 'click', onBack);
+  on(backBtn, 'click', onBack);
 
   page.append(header, subtitle, usageFold, planFold, onDemandFold, statusLine);
   parent.appendChild(page);
@@ -318,11 +461,17 @@ function createBillingPage(parent, onBack) {
     const percentUsed = usage.totalTokens > 0
       ? Math.min(100, Math.round((usage.usedTokens / usage.totalTokens) * 100))
       : 0;
+    const allowanceLabel = usage.totalTokens > 0
+      ? `of ${formatTokens(usage.totalTokens)} available`
+      : 'No included tokens available';
+    const progressLabel = usage.totalTokens > 0
+      ? `${percentUsed}% used. Renews on ${usage.renewsOn}.`
+      : `No active token allowance. Renews on ${usage.renewsOn}.`;
 
     usageBody.append(
       el('div', { class: 'billing-kpi' },
         el('p', { class: 'bold' }, formatTokens(usage.usedTokens)),
-        el('p', { class: 'secondary' }, `of ${formatTokens(usage.totalTokens)} available`),
+        el('p', { class: 'secondary' }, allowanceLabel),
       ),
       el('div', { class: 'billing-meter' },
         el('div', {
@@ -332,7 +481,7 @@ function createBillingPage(parent, onBack) {
           'aria-label': `${percentUsed}% of monthly tokens used`,
         }),
       ),
-      el('p', { class: 'secondary' }, `${percentUsed}% used. Renews on ${usage.renewsOn}.`),
+      el('p', { class: 'secondary' }, progressLabel),
       el('p', { class: 'secondary' }, `Current plan: ${usage.planLabel}`),
     );
   }

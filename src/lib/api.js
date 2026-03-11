@@ -100,6 +100,7 @@ export async function restoreSession() {
     if (agents.length > 0) {
       store.agentId = agents[0].id;
       if (agents[0].name) store.name = agents[0].name;
+      if (agents[0].personality) store.characterProfile = agents[0].personality;
     }
   } catch {
     // Agent will be created later during onboarding
@@ -142,12 +143,64 @@ export async function loadOrCreateAgent(name, characterProfile) {
     const agents = await getMyAgents();
     if (agents.length > 0) {
       store.agentId = agents[0].id;
+      if (agents[0].name) store.name = agents[0].name;
+      if (agents[0].personality) store.characterProfile = agents[0].personality;
       return agents[0];
     }
   } catch {
     // Fall through to create
   }
   return createAgent(name, 'CyberTwin agent', characterProfile || '');
+}
+
+export async function saveAgentName(name) {
+  const trimmedName = name.trim();
+  if (!trimmedName) {
+    throw new Error('Twin name cannot be empty.');
+  }
+
+  let agentId = store.agentId;
+  if (!agentId) {
+    const agent = await loadOrCreateAgent(trimmedName, store.characterProfile);
+    agentId = agent.id;
+  }
+
+  const { data, error } = await supabase
+    .from('agents')
+    .update({ name: trimmedName })
+    .eq('id', agentId)
+    .select('id, name')
+    .single();
+  if (error) throw new Error(error.message);
+
+  store.agentId = data.id;
+  store.name = data.name || trimmedName;
+  return data;
+}
+
+export async function saveAgentCharacterProfile(characterProfile) {
+  const trimmedProfile = characterProfile.trim();
+  if (!trimmedProfile) {
+    throw new Error('Character profile cannot be empty.');
+  }
+
+  let agentId = store.agentId;
+  if (!agentId) {
+    const agent = await loadOrCreateAgent(store.name || 'My Twin', trimmedProfile);
+    agentId = agent.id;
+  }
+
+  const { data, error } = await supabase
+    .from('agents')
+    .update({ personality: trimmedProfile })
+    .eq('id', agentId)
+    .select('id, personality')
+    .single();
+  if (error) throw new Error(error.message);
+
+  store.agentId = data.id;
+  store.characterProfile = data.personality || trimmedProfile;
+  return data;
 }
 
 // ── Profile Image ──
