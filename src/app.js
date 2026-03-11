@@ -8,6 +8,7 @@ import { registerVerifyEmail } from './screens/verify-email.js';
 import { registerBirthing } from './screens/birthing.js';
 import { registerDashboard } from './screens/dashboard.js';
 import { registerAuth } from './screens/auth.js';
+import { registerShare } from './screens/share.js';
 import { store, restorePendingSignup, savePendingSignup } from './lib/store.js';
 import { restoreSession, isEmailVerified, markOnboardingPaid } from './lib/api.js';
 import { applyPlanSelection } from './lib/plans.js';
@@ -22,6 +23,18 @@ registerVerifyEmail();
 registerBirthing();
 registerAuth();
 registerDashboard();
+registerShare();
+
+function syncSharePathToHash() {
+  const match = window.location.pathname.match(/^\/share\/([^/]+)$/);
+  if (!match?.[1]) return;
+
+  const token = decodeURIComponent(match[1]);
+  const url = new URL(window.location.href);
+  url.pathname = '/';
+  url.hash = `share?token=${encodeURIComponent(token)}`;
+  window.history.replaceState({}, '', `${url.pathname}${url.search}${url.hash}`);
+}
 
 async function init() {
   await restoreSession();
@@ -56,6 +69,8 @@ async function init() {
   } else if (urlParams.get('payment') === 'cancelled') {
     window.history.replaceState({}, '', window.location.pathname + window.location.hash);
   }
+
+  syncSharePathToHash();
 
   const app = document.getElementById('app');
   if (app) {

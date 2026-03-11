@@ -1,3 +1,5 @@
+const { getSupabaseAdmin } = require('./supabase-admin.js');
+
 function bufferToDataUrl(buffer, contentType) {
   return `data:${contentType};base64,${buffer.toString('base64')}`;
 }
@@ -8,17 +10,6 @@ function extensionForContentType(contentType, fallback = 'jpg') {
   if (contentType.includes('webp')) return 'webp';
   if (contentType.includes('gif')) return 'gif';
   return fallback;
-}
-
-async function createSupabaseClient() {
-  const supabaseUrl = process.env.SUPABASE_URL;
-  const supabaseKey = process.env.SUPABASE_SECRET_KEY;
-  if (!supabaseUrl || !supabaseKey) {
-    throw new Error('Supabase storage credentials are missing.');
-  }
-
-  const { createClient } = await import('@supabase/supabase-js');
-  return createClient(supabaseUrl, supabaseKey);
 }
 
 async function downloadExternalImage(imageUrl) {
@@ -37,7 +28,7 @@ async function downloadExternalImage(imageUrl) {
 }
 
 async function uploadProfileImage(buffer, contentType, userId, agentId) {
-  const supabase = await createSupabaseClient();
+  const supabase = await getSupabaseAdmin();
   const ext = extensionForContentType(contentType, 'png');
   const storagePath = `${userId}/${agentId}.${ext}`;
 

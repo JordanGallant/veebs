@@ -7,7 +7,9 @@ import { createChat } from '../components/chat.js';
 import { createCharacter } from '../components/character.js';
 import { createWallet } from '../components/wallet.js';
 import { createWhatsAppQR } from '../components/whatsapp-qr.js';
+import { openShareLayover } from '../components/share-layover.js';
 import { animateTypewriter } from '../lib/typewriter.js';
+import { createShareCard, buildPublicShareUrl } from '../lib/share.js';
 
 const TAB_LABELS = {
   chat: 'Chat',
@@ -48,6 +50,18 @@ function render(container) {
     class: 'dashboard-title',
     'aria-label': 'Twin name',
   });
+  const shareBtn = el('button', {
+    class: 'dashboard-share-btn',
+    type: 'button',
+    'aria-label': 'Share twin card',
+    title: 'Share twin card',
+  }, createShareIcon());
+  const shareStatus = el('p', {
+    class: 'secondary text-sm dashboard-share-status',
+    'aria-live': 'polite',
+  });
+  const headerTopRow = el('div', { class: 'dashboard-header-toprow' }, nameTitle, shareBtn);
+  const headerCopy = el('div', { class: 'dashboard-header-copy' }, headerTopRow, shareStatus);
 
   function updateDisplayedName(name) {
     nameTitle.textContent = name && name.trim() ? name : 'Unnamed Twin';
@@ -64,7 +78,7 @@ function render(container) {
     loading: 'eager',
     decoding: 'async',
   });
-  const header = el('div', { class: 'dashboard-header' }, profileImage, nameTitle);
+  const header = el('div', { class: 'dashboard-header' }, profileImage, headerCopy);
   const profilePanelImage = el('img', {
     class: 'profile-image-large',
     src: profileImage.getAttribute('src'),
@@ -89,19 +103,53 @@ function render(container) {
   };
   let activePanelKey = null;
   let activePanelScroller = null;
+  let profileScrollWatcherEl = null;
+  let lastProfileScrollTop = 0;
 
   function saveActiveScrollPosition() {
     if (!activePanelKey || !activePanelScroller) return;
     scrollPositions[activePanelKey] = activePanelScroller.scrollTop;
   }
 
-  function toggleProfileExpanded() {
-    profileExpanded = !profileExpanded;
+  function syncProfileExpandedState() {
     profileImage.setAttribute('aria-expanded', String(profileExpanded));
     profileImage.setAttribute('title', profileExpanded ? 'Close profile image' : 'Open profile image');
     profileImage.classList.toggle('profile-image--active', profileExpanded);
     profilePanel.classList.toggle('profile-panel--open', profileExpanded);
     dashboard.classList.toggle('dashboard--photo-expanded', profileExpanded);
+  }
+
+  function closeProfileExpanded() {
+    if (!profileExpanded) return;
+    profileExpanded = false;
+    syncProfileExpandedState();
+  }
+
+  function toggleProfileExpanded() {
+    profileExpanded = !profileExpanded;
+    syncProfileExpandedState();
+  }
+
+  function handleProfileScrollCollapse() {
+    if (!profileScrollWatcherEl) return;
+    const nextScrollTop = profileScrollWatcherEl.scrollTop;
+    if (profileExpanded && nextScrollTop > lastProfileScrollTop) {
+      closeProfileExpanded();
+    }
+    lastProfileScrollTop = nextScrollTop;
+  }
+
+  function bindProfileScrollWatcher(element) {
+    if (profileScrollWatcherEl === element) {
+      lastProfileScrollTop = element.scrollTop;
+      return;
+    }
+    if (profileScrollWatcherEl) {
+      profileScrollWatcherEl.removeEventListener('scroll', handleProfileScrollCollapse);
+    }
+    profileScrollWatcherEl = element;
+    lastProfileScrollTop = element.scrollTop;
+    profileScrollWatcherEl.addEventListener('scroll', handleProfileScrollCollapse);
   }
 
   on(profileImage, 'click', toggleProfileExpanded);
@@ -111,6 +159,69 @@ function render(container) {
     toggleProfileExpanded();
   });
   on(profilePanelImage, 'click', toggleProfileExpanded);
+
+  let sharing = false;
+
+  function renderShareState(message = '') {
+    shareStatus.textContent = message;
+  }
+
+  function renderShareButton({ busy = false } = {}) {
+    shareBtn.disabled = sharing;
+    shareBtn.setAttribute('aria-busy', String(busy));
+  }
+
+  on(shareBtn, 'click', async () => {
+    if (sharing) return;
+    sharing = true;
+    renderShareButton();
+
+    const twinName = (store.name && store.name.trim()) || 'Unnamed Twin';
+    try {
+      if (!store.agentId) {
+        throw new Error('Create your twin before sharing.');
+      }
+
+      const flowInput = await openShareLayover(container, { twinName });
+      if (!flowInput) {
+        renderShareState('');
+        return;
+      }
+
+      renderShareButton({ busy: true });
+
+      const shareRecord = await createShareCard({
+        agentId: store.agentId,
+        twinName,
+        recipientName: flowInput.recipientName,
+        sharePrompt: flowInput.sharePrompt,
+      });
+      const shareUrl = buildPublicShareUrl(shareRecord.token);
+      const sharePayload = {
+        title: `${shareRecord.twinName || twinName} on CyberTwin`,
+        text: shareRecord.personalMessage || 'Shared from CyberTwin.',
+        url: shareUrl,
+      };
+
+      if (navigator.share) {
+        await navigator.share(sharePayload);
+        renderShareState('Shared.');
+        return;
+      }
+
+      const copied = await copyShareLink(shareUrl);
+      renderShareState(copied ? 'Link copied.' : shareUrl);
+    } catch (err) {
+      if (err?.name === 'AbortError') {
+        renderShareState('');
+        return;
+      }
+      renderShareState(err?.message || 'Could not create share link.');
+    } finally {
+      sharing = false;
+      renderShareButton({ busy: false });
+    }
+  });
 
   function renderTabs() {
     clear(tabBar);
@@ -185,6 +296,7 @@ function render(container) {
     } else if (!isChatPanel) {
       activePanelScroller.scrollTop = 0;
     }
+    bindProfileScrollWatcher(activePanelScroller);
   }
 
   const dashboardChrome = el('div', { class: 'dashboard-chrome' }, header, profilePanel, tabBar);
@@ -718,4 +830,33 @@ function getProfileImageSrc() {
 
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 72 72"><rect width="72" height="72" rx="8" fill="#2b2927" fill-opacity="0.08"/><circle cx="36" cy="28" r="12" fill="#2b2927" fill-opacity="0.22"/><path d="M18 58c0-10 8-18 18-18s18 8 18 18" fill="#2b2927" fill-opacity="0.22"/></svg>`;
   return `data:image/svg+xml,${encodeURIComponent(svg)}`;
+}
+
+async function copyShareLink(url) {
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(url);
+      return true;
+    }
+  } catch {}
+  return false;
+}
+
+function createShareIcon() {
+  const ns = 'http://www.w3.org/2000/svg';
+  const svg = document.createElementNS(ns, 'svg');
+  svg.setAttribute('viewBox', '0 0 24 24');
+  svg.setAttribute('class', 'dashboard-share-icon');
+  svg.setAttribute('aria-hidden', 'true');
+
+  const path = document.createElementNS(ns, 'path');
+  path.setAttribute('d', 'M15 5h4v4M10 14 19 5M19 13v5a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h5');
+  path.setAttribute('fill', 'none');
+  path.setAttribute('stroke', 'currentColor');
+  path.setAttribute('stroke-linecap', 'round');
+  path.setAttribute('stroke-linejoin', 'round');
+  path.setAttribute('stroke-width', '1.8');
+  svg.appendChild(path);
+
+  return svg;
 }
