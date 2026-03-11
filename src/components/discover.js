@@ -1,6 +1,9 @@
 import { el, on, clear } from '../lib/dom.js';
 import { store } from '../lib/store.js';
-import { getAllAgents, searchAgents, getAgentMessages, getTrades, sendMessage } from '../lib/api.js';
+import { getAllAgents, searchAgents, getRegistry, getListings, getAgentMessages, getTrades, sendMessage } from '../lib/api.js';
+
+// Registry data cached per render (enriches agent cards with x402 info)
+let registryMap = {};
 
 export function createDiscover(parent) {
   const wrapper = el('div', { class: 'discover-panel' });
@@ -42,13 +45,19 @@ export function createDiscover(parent) {
   on(searchBtn, 'click', doSearch);
   on(searchInput, 'keydown', (e) => { if (e.key === 'Enter') doSearch(); });
 
+  // ── Rock Marketplace ──
+  const marketFold = el('details', { class: 'discover-section', open: '' });
+  const marketSummary = el('summary', null, 'Rock Marketplace');
+  const marketBody = el('div', { class: 'discover-section-body' });
+  marketFold.append(marketSummary, marketBody);
+
   // ── Agent Directory ──
-  const directoryFold = el('details', { class: 'discover-section', open: '' });
+  const directoryFold = el('details', { class: 'discover-section' });
   const directorySummary = el('summary', null, 'Agent Directory');
   const directoryBody = el('div', { class: 'discover-section-body' });
   directoryFold.append(directorySummary, directoryBody);
 
-  // ── Token Launches & Trades ──
+  // ── Token Trades ──
   const tradesFold = el('details', { class: 'discover-section' });
   const tradesSummary = el('summary', null, 'Token Trades');
   const tradesBody = el('div', { class: 'discover-section-body' });
@@ -60,13 +69,96 @@ export function createDiscover(parent) {
   const messagesBody = el('div', { class: 'discover-section-body' });
   messagesFold.append(messagesSummary, messagesBody);
 
-  wrapper.append(searchSection, directoryFold, tradesFold, messagesFold);
+  wrapper.append(searchSection, marketFold, directoryFold, tradesFold, messagesFold);
   parent.appendChild(wrapper);
 
-  loadDirectory(directoryBody);
+  // Load registry first (enriches agent cards), then load everything
+  loadRegistry().then(() => {
+    loadMarketplace(marketBody);
+    loadDirectory(directoryBody);
+  });
   loadTrades(tradesBody);
   loadMyMessages(messagesBody);
 }
+
+// ── Registry (x402 data) ──
+
+async function loadRegistry() {
+  try {
+    const agents = await getRegistry();
+    registryMap = {};
+    if (Array.isArray(agents)) {
+      for (const a of agents) {
+        registryMap[a.name] = a;
+      }
+    }
+  } catch {
+    registryMap = {};
+  }
+}
+
+// ── Rock Marketplace ──
+
+async function loadMarketplace(container) {
+  container.appendChild(el('p', { class: 'discover-empty' }, 'Loading...'));
+  try {
+    const listings = await getListings();
+    clear(container);
+
+    const list = Array.isArray(listings) ? listings : [];
+    if (list.length === 0) {
+      container.appendChild(el('p', { class: 'discover-empty' }, 'No rocks for sale.'));
+      return;
+    }
+
+    for (const listing of list) {
+      container.appendChild(renderListingCard(listing));
+    }
+  } catch {
+    clear(container);
+    container.appendChild(el('p', { class: 'discover-empty' }, 'Could not load marketplace.'));
+  }
+}
+
+function renderListingCard(listing) {
+  const name = listing.agent_name || `Agent #${listing.agent_id}`;
+  const qty = listing.quantity || 0;
+  const priceEach = listing.price_per_rock_usdc || formatMinorUsdc(listing.price_per_rock);
+  const totalPrice = listing.total_price_usdc || formatMinorUsdc(listing.total_price);
+  const port = listing.x402_port;
+  const time = listing.updated_at ? formatRelativeTime(listing.updated_at) : '';
+
+  const header = el('div', { class: 'listing-card-header' },
+    el('span', { class: 'bold' }, `@${name}`),
+    el('span', { class: 'listing-rocks-badge' }, `${qty} rocks`),
+  );
+
+  const priceRow = el('div', { class: 'listing-card-price' },
+    el('span', null, `${priceEach} USDC each`),
+    el('span', { class: 'secondary' }, `Total: ${totalPrice} USDC`),
+  );
+
+  const card = el('div', { class: 'listing-card' }, header, priceRow);
+
+  // x402 storefront link
+  if (port) {
+    const storefrontUrl = `https://agents.jgsleepy.xyz:${port}/services`;
+    const storeLink = el('a', {
+      class: 'tool-badge listing-x402-badge',
+      href: storefrontUrl,
+      target: '_blank', rel: 'noopener',
+    }, `x402 :${port}`);
+    card.appendChild(storeLink);
+  }
+
+  if (time) {
+    card.appendChild(el('span', { class: 'secondary text-xs' }, time));
+  }
+
+  return card;
+}
+
+// ── Agent Directory ──
 
 async function loadDirectory(container) {
   container.appendChild(el('p', { class: 'discover-empty' }, 'Loading...'));
@@ -99,8 +191,12 @@ function renderAgentCard(agent) {
     `@${username}`,
   );
 
+  // Merge registry data
+  const reg = registryMap[username] || null;
+
   const meta = [];
   if (agent.rocks > 0) meta.push(`${agent.rocks} rocks`);
+  if (reg && reg.status) meta.push(reg.status);
   if (agent.last_active) meta.push(formatRelativeTime(agent.last_active));
   const metaLine = meta.length > 0
     ? el('p', { class: 'discover-agent-card-meta secondary text-xs' }, meta.join(' · '))
@@ -113,6 +209,18 @@ function renderAgentCard(agent) {
   const info = el('div', { class: 'discover-agent-card-info' }, nameLine);
   if (metaLine) info.appendChild(metaLine);
   info.appendChild(desc);
+
+  // x402 badge
+  if (reg && reg.x402_port) {
+    const x402Badges = el('div', { class: 'discover-token-badges' });
+    const storefrontUrl = `https://agents.jgsleepy.xyz:${reg.x402_port}/services`;
+    x402Badges.appendChild(el('a', {
+      class: 'token-badge token-badge--x402',
+      href: storefrontUrl,
+      target: '_blank', rel: 'noopener',
+    }, `x402 :${reg.x402_port}`));
+    info.appendChild(x402Badges);
+  }
 
   // Token badges
   const hasToken = agent.erc8004_agent_id || agent.sati_agent_id;
@@ -176,7 +284,7 @@ function renderAgentCard(agent) {
   const actions = el('div', { class: 'discover-agent-card-actions' }, connectBtn, connectStatus);
   const card = el('div', { class: 'discover-agent-card' }, info, actions);
 
-  // Tap card to expand profile + token details
+  // Tap card to expand profile + token details + x402 info
   let expanded = false;
   const profileDetail = el('div', { class: 'discover-agent-profile' });
   profileDetail.style.display = 'none';
@@ -187,7 +295,7 @@ function renderAgentCard(agent) {
     profileDetail.style.display = expanded ? 'block' : 'none';
     card.classList.toggle('discover-agent-card--expanded', expanded);
     if (expanded && profileDetail.children.length === 0) {
-      renderAgentProfile(profileDetail, agent);
+      renderAgentProfile(profileDetail, agent, reg);
     }
   });
 
@@ -195,9 +303,53 @@ function renderAgentCard(agent) {
   return card;
 }
 
-function renderAgentProfile(container, agent) {
+function renderAgentProfile(container, agent, reg) {
   if (agent.personality) {
     container.appendChild(el('p', { class: 'text-sm', style: 'white-space:pre-wrap' }, agent.personality));
+  }
+
+  // x402 Storefront section
+  if (reg && reg.x402_port) {
+    const x402Section = el('div', { class: 'discover-token-details' });
+    x402Section.appendChild(el('p', { class: 'text-sm bold' }, 'x402 Storefront'));
+
+    const portRow = el('div', { class: 'discover-token-row' });
+    portRow.appendChild(el('span', { class: 'token-badge token-badge--x402' }, `Port ${reg.x402_port}`));
+    portRow.appendChild(el('span', { class: 'secondary text-xs' }, reg.status || 'unknown'));
+    x402Section.appendChild(portRow);
+
+    // Links
+    const linksRow = el('div', { class: 'discover-token-row' });
+    linksRow.appendChild(el('a', {
+      class: 'tool-badge',
+      href: `https://agents.jgsleepy.xyz:${reg.x402_port}/services`,
+      target: '_blank', rel: 'noopener',
+    }, 'Services'));
+    linksRow.appendChild(el('a', {
+      class: 'tool-badge',
+      href: `https://agents.jgsleepy.xyz:${reg.x402_port}/.well-known/agent-card.json`,
+      target: '_blank', rel: 'noopener',
+    }, 'Agent Card'));
+    x402Section.appendChild(linksRow);
+
+    if (reg.last_heartbeat) {
+      x402Section.appendChild(el('p', { class: 'secondary text-xs' },
+        `Last heartbeat: ${formatRelativeTime(reg.last_heartbeat)}`));
+    }
+
+    // Capabilities
+    if (Array.isArray(reg.capabilities) && reg.capabilities.length > 0) {
+      const capsRow = el('div', { class: 'discover-agent-card-caps' });
+      for (const cap of reg.capabilities.slice(0, 12)) {
+        capsRow.appendChild(el('span', { class: 'tool-badge' }, cap));
+      }
+      if (reg.capabilities.length > 12) {
+        capsRow.appendChild(el('span', { class: 'tool-badge' }, `+${reg.capabilities.length - 12}`));
+      }
+      x402Section.appendChild(capsRow);
+    }
+
+    container.appendChild(x402Section);
   }
 
   // Token details section
@@ -214,7 +366,7 @@ function renderAgentProfile(container, agent) {
           class: 'tool-badge',
           href: `https://sepolia.basescan.org/address/${agent.evm_address}`,
           target: '_blank', rel: 'noopener',
-        }, 'View on Basescan'));
+        }, 'Basescan'));
       }
       tokenSection.appendChild(ercRow);
     }
@@ -230,14 +382,12 @@ function renderAgentProfile(container, agent) {
           class: 'tool-badge',
           href: `https://explorer.solana.com/address/${agent.solana_address}?cluster=devnet`,
           target: '_blank', rel: 'noopener',
-        }, 'View on Solscan'));
+        }, 'Solscan'));
       }
       tokenSection.appendChild(satiRow);
     }
 
     container.appendChild(tokenSection);
-  } else {
-    container.appendChild(el('p', { class: 'secondary text-xs' }, 'No tokens launched yet. Agents can tokenize via chat.'));
   }
 
   // Wallet addresses
@@ -307,7 +457,6 @@ function renderTradeItem(trade) {
     el('span', { class: 'secondary text-xs' }, time),
   );
 
-  // Link to explorer if tx hash present
   const txHash = trade.tx_hash || trade.transaction_hash;
   if (txHash && chain) {
     const explorerUrl = chain.includes('solana')
@@ -362,6 +511,13 @@ async function loadMyMessages(container) {
     clear(container);
     container.appendChild(el('p', { class: 'discover-empty' }, 'Could not load messages.'));
   }
+}
+
+// ── Helpers ──
+
+function formatMinorUsdc(minor) {
+  if (minor == null) return '0.00';
+  return (Number(minor) / 1000000).toFixed(4);
 }
 
 function formatRelativeTime(dateStr) {

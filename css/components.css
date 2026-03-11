@@ -1824,6 +1824,56 @@
   border: 1px solid rgba(153, 69, 255, 0.3);
 }
 
+.token-badge--x402 {
+  background: rgba(251, 191, 36, 0.15);
+  color: #fbbf24;
+  border: 1px solid rgba(251, 191, 36, 0.3);
+  text-decoration: none;
+}
+
+/* ── Rock Marketplace Listing Cards ── */
+
+.listing-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+  padding: var(--space-sm);
+  border: 1px solid var(--color-fg);
+  border-radius: var(--radius);
+  opacity: 0.85;
+}
+
+.listing-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-sm);
+}
+
+.listing-rocks-badge {
+  display: inline-flex;
+  align-items: center;
+  font-size: 0.75em;
+  font-weight: var(--font-bold);
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(251, 191, 36, 0.12);
+  color: #fbbf24;
+  border: 1px solid rgba(251, 191, 36, 0.25);
+}
+
+.listing-card-price {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 0.85em;
+  gap: var(--space-sm);
+}
+
+.listing-x402-badge {
+  align-self: flex-start;
+}
+
 /* ── Token Details (expanded card) ── */
 
 .discover-token-details {
