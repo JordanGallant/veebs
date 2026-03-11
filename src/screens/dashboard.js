@@ -9,12 +9,15 @@ import {
   saveAgentName,
   saveAgentCharacterProfile,
   saveOwnerReferenceName,
+  startAgent,
+  stopAgent,
+  getTools,
 } from '../lib/api.js';
 import { PLAN_OPTIONS, applyPlanSelection, getPlanById } from '../lib/plans.js';
 import { createChat } from '../components/chat.js';
 import { createCharacter } from '../components/character.js';
 import { createWallet } from '../components/wallet.js';
-import { createWhatsAppQR } from '../components/whatsapp-qr.js';
+import { createDiscover } from '../components/discover.js';
 import { openShareLayover } from '../components/share-layover.js';
 import { animateTypewriter } from '../lib/typewriter.js';
 
@@ -23,7 +26,7 @@ const GENERIC_DISPLAY_NAME = 'CyberTwin User';
 const TAB_LABELS = {
   chat: 'Chat',
   wallet: 'Wallet',
-  connect: 'Connect',
+  discover: 'Discover',
 };
 
 const PLAN_TOKEN_QUOTAS = {
@@ -74,6 +77,43 @@ async function render(container) {
     class: 'dashboard-title',
     'aria-label': 'Twin name',
   });
+
+  // Status dot
+  const statusDot = el('span', { class: `agent-status-dot agent-status-dot--${store.agentState}` });
+  const statusLabel = el('span', { class: 'agent-status-label' }, store.agentState);
+  const statusRow = el('div', { class: 'agent-status-row' }, statusDot, nameTitle, statusLabel);
+
+  // Brain toggle
+  const brainBtn = el('button', {
+    class: store.agentState === 'running' ? 'brain-toggle brain-toggle--active' : 'brain-toggle',
+    type: 'button',
+    title: store.agentState === 'running' ? 'Stop brain' : 'Start brain',
+  }, store.agentState === 'running' ? 'Stop' : 'Start');
+
+  on(brainBtn, 'click', async () => {
+    brainBtn.setAttribute('disabled', '');
+    brainBtn.textContent = '...';
+    try {
+      if (store.agentState === 'running') {
+        await stopAgent();
+      } else {
+        await startAgent();
+      }
+      updateBrainUI();
+    } catch (err) {
+      shareStatus.textContent = err.message;
+    }
+    brainBtn.removeAttribute('disabled');
+  });
+
+  function updateBrainUI() {
+    statusDot.className = `agent-status-dot agent-status-dot--${store.agentState}`;
+    statusLabel.textContent = store.agentState;
+    brainBtn.className = store.agentState === 'running' ? 'brain-toggle brain-toggle--active' : 'brain-toggle';
+    brainBtn.textContent = store.agentState === 'running' ? 'Stop' : 'Start';
+    brainBtn.title = store.agentState === 'running' ? 'Stop brain' : 'Start brain';
+  }
+
   const shareBtn = el('button', {
     class: 'dashboard-share-btn',
     type: 'button',
@@ -84,8 +124,34 @@ async function render(container) {
     class: 'secondary text-sm dashboard-share-status',
     'aria-live': 'polite',
   });
-  const headerTopRow = el('div', { class: 'dashboard-header-toprow' }, nameTitle, shareBtn);
-  const headerCopy = el('div', { class: 'dashboard-header-copy' }, headerTopRow, shareStatus);
+
+  // On-chain identity chips
+  const chips = el('div', { class: 'agent-chips' });
+  if (store.solanaAddress) {
+    const short = store.solanaAddress.slice(0, 6) + '...' + store.solanaAddress.slice(-4);
+    chips.appendChild(el('a', {
+      class: 'agent-chip',
+      href: `https://explorer.solana.com/address/${store.solanaAddress}?cluster=devnet`,
+      target: '_blank', rel: 'noopener',
+    }, `SOL ${short}`));
+  }
+  if (store.evmAddress) {
+    const short = store.evmAddress.slice(0, 6) + '...' + store.evmAddress.slice(-4);
+    chips.appendChild(el('a', {
+      class: 'agent-chip',
+      href: `https://sepolia.basescan.org/address/${store.evmAddress}`,
+      target: '_blank', rel: 'noopener',
+    }, `EVM ${short}`));
+  }
+  if (store.erc8004AgentId) {
+    chips.appendChild(el('span', { class: 'agent-chip' }, `ERC-8004 #${store.erc8004AgentId}`));
+  }
+  if (store.satiAgentId) {
+    chips.appendChild(el('span', { class: 'agent-chip' }, 'SATI'));
+  }
+
+  const headerTopRow = el('div', { class: 'dashboard-header-toprow' }, statusRow, brainBtn, shareBtn);
+  const headerCopy = el('div', { class: 'dashboard-header-copy' }, headerTopRow, chips, shareStatus);
 
   function updateDisplayedName(name) {
     nameTitle.textContent = name && name.trim() ? name : 'Unnamed Twin';
@@ -115,14 +181,14 @@ async function render(container) {
   const tabBar = el('div', { class: 'tabs' });
   const tabContent = el('div', { class: 'tab-content dashboard-tab-content' });
 
-  const tabs = ['chat', 'wallet', 'connect'];
+  const tabs = ['chat', 'wallet', 'discover'];
   let activeTab = 'wallet';
   let settingsOpen = false;
   let profileExpanded = false;
   const scrollPositions = {
     chat: null,
     wallet: null,
-    connect: null,
+    discover: null,
     settings: null,
   };
   let activePanelKey = null;
@@ -315,8 +381,8 @@ async function render(container) {
         case 'wallet':
           createWallet(tabContent);
           break;
-        case 'connect':
-          createWhatsAppQR(tabContent);
+        case 'discover':
+          createDiscover(tabContent);
           break;
       }
     }
@@ -638,7 +704,60 @@ function createSettings(parent, { updateDisplayedName }) {
       navigate('welcome');
     });
 
-    wrapper.append(characterSection, billingSection, signOutBtn);
+    // ── Brain Control ──
+    const brainSection = el('div', { class: 'settings-section brain-section' });
+    brainSection.appendChild(el('p', { class: 'bold' }, 'Agent Brain'));
+    const brainStatus = el('p', { class: 'secondary' }, `State: ${store.agentState}`);
+    const brainToggle = el('button', {
+      class: store.agentState === 'running' ? 'brain-toggle brain-toggle--active' : 'brain-toggle',
+      type: 'button',
+    }, store.agentState === 'running' ? 'Stop Brain' : 'Start Brain');
+
+    on(brainToggle, 'click', async () => {
+      brainToggle.setAttribute('disabled', '');
+      brainToggle.textContent = '...';
+      try {
+        if (store.agentState === 'running') {
+          await stopAgent();
+        } else {
+          await startAgent();
+        }
+        brainStatus.textContent = `State: ${store.agentState}`;
+        brainToggle.className = store.agentState === 'running' ? 'brain-toggle brain-toggle--active' : 'brain-toggle';
+        brainToggle.textContent = store.agentState === 'running' ? 'Stop Brain' : 'Start Brain';
+        updateBrainUI();
+      } catch (err) {
+        brainStatus.textContent = err.message;
+      }
+      brainToggle.removeAttribute('disabled');
+    });
+
+    if (store.lastActive) {
+      brainSection.appendChild(el('p', { class: 'secondary text-sm' }, `Last active: ${new Date(store.lastActive).toLocaleString()}`));
+    }
+    brainSection.append(brainStatus, brainToggle);
+
+    // ── Capabilities ──
+    const capsSection = el('div', { class: 'settings-section' });
+    capsSection.appendChild(el('p', { class: 'bold' }, 'Capabilities'));
+    const capsBadges = el('div', { class: 'tool-badges' });
+    capsSection.append(capsBadges);
+
+    // Load tools
+    getTools().then((tools) => {
+      if (!Array.isArray(tools) || tools.length === 0) {
+        capsBadges.appendChild(el('span', { class: 'secondary text-sm' }, 'No tools loaded.'));
+        return;
+      }
+      for (const tool of tools) {
+        const name = typeof tool === 'string' ? tool : (tool.name || tool.function?.name || 'tool');
+        capsBadges.appendChild(el('span', { class: 'tool-badge' }, name));
+      }
+    }).catch(() => {
+      capsBadges.appendChild(el('span', { class: 'secondary text-sm' }, 'Could not load tools.'));
+    });
+
+    wrapper.append(characterSection, brainSection, capsSection, billingSection, signOutBtn);
   }
 
   renderSettingsView();

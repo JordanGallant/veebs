@@ -1428,3 +1428,331 @@
 .auth-form-fields .btn--secondary:hover {
   opacity: 1;
 }
+
+/* ── Agent Status ── */
+
+.agent-status-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  flex-wrap: wrap;
+}
+
+.agent-status-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: var(--color-fg);
+  opacity: 0.3;
+}
+
+.agent-status-dot--running {
+  background: #22c55e;
+  opacity: 1;
+  box-shadow: 0 0 6px #22c55e88;
+  animation: status-pulse 2s ease-in-out infinite;
+}
+
+.agent-status-dot--thinking {
+  background: #eab308;
+  opacity: 1;
+  animation: status-pulse 1s ease-in-out infinite;
+}
+
+.agent-status-dot--sleeping {
+  background: #9ca3af;
+  opacity: 0.7;
+}
+
+@keyframes status-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+.agent-status-label {
+  font-size: 0.75em;
+  opacity: 0.6;
+  text-transform: capitalize;
+}
+
+/* ── Agent Chips (on-chain IDs, explorer links) ── */
+
+.agent-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding-top: 2px;
+}
+
+.agent-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.65em;
+  padding: 2px 8px;
+  border: 1px solid var(--color-fg);
+  border-radius: 999px;
+  opacity: 0.5;
+  text-decoration: none;
+  color: inherit;
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+
+.agent-chip:hover {
+  opacity: 0.9;
+}
+
+/* ── Brain Toggle ── */
+
+.brain-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-xs);
+  padding: var(--space-xs) var(--space-sm);
+  font-size: 0.8em;
+  border: 1px solid var(--color-fg);
+  border-radius: var(--radius);
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font-family: var(--font-body);
+  transition: background 0.15s, color 0.15s;
+}
+
+.brain-toggle:hover {
+  background: var(--color-fg);
+  color: var(--color-bg);
+}
+
+.brain-toggle--active {
+  background: #22c55e22;
+  border-color: #22c55e;
+  color: #166534;
+}
+
+.brain-toggle--active:hover {
+  background: #22c55e44;
+}
+
+.brain-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+}
+
+/* ── Tool Badges ── */
+
+.tool-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding-top: var(--space-xs);
+}
+
+.tool-badge {
+  font-size: 0.7em;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--color-fg);
+  color: var(--color-bg);
+  opacity: 0.6;
+  white-space: nowrap;
+}
+
+/* ── Enhanced Chat ── */
+
+.chat-tool-calls {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-top: 4px;
+}
+
+.chat-tool-call {
+  font-size: 0.8em;
+  border: 1px solid var(--color-fg);
+  border-radius: var(--radius);
+  opacity: 0.6;
+}
+
+.chat-tool-call summary {
+  padding: 4px 8px;
+  cursor: pointer;
+  font-family: var(--font-body);
+}
+
+.chat-tool-call pre {
+  padding: 4px 8px;
+  margin: 0;
+  font-size: 0.85em;
+  overflow-x: auto;
+  white-space: pre-wrap;
+  word-break: break-all;
+  border-top: 1px solid var(--color-fg);
+  opacity: 0.7;
+}
+
+.chat-products {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-xs);
+  padding-top: var(--space-xs);
+}
+
+.chat-product-card {
+  font-size: 0.8em;
+  padding: var(--space-xs) var(--space-sm);
+  border: 1px solid var(--color-fg);
+  border-radius: var(--radius);
+  opacity: 0.7;
+  max-width: 200px;
+}
+
+/* ── Wallet Balance Grid ── */
+
+.wallet-balance-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: var(--space-sm);
+}
+
+.wallet-balance-card {
+  padding: var(--space-sm);
+  border: 1px solid var(--color-fg);
+  border-radius: var(--radius);
+  text-align: center;
+  opacity: 0.85;
+}
+
+.wallet-balance-card .wallet-balance {
+  font-size: 1.2em;
+  padding: 0;
+}
+
+.wallet-balance-card-label {
+  font-size: 0.75em;
+  opacity: 0.6;
+  padding-top: 2px;
+}
+
+/* ── Discover Tab ── */
+
+.discover-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+}
+
+.discover-section {
+  border: 1px solid var(--color-fg);
+  border-radius: var(--radius);
+  opacity: 0.85;
+}
+
+.discover-section summary {
+  padding: var(--space-sm) var(--space-md);
+  cursor: pointer;
+  font-family: var(--font-header);
+  font-weight: var(--font-bold);
+}
+
+.discover-section-body {
+  padding: 0 var(--space-md) var(--space-md);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+}
+
+.discover-agent-card {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-sm);
+  padding: var(--space-sm);
+  border: 1px solid var(--color-fg);
+  border-radius: var(--radius);
+  opacity: 0.8;
+}
+
+.discover-agent-card-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.discover-agent-card-name {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  font-weight: var(--font-bold);
+}
+
+.discover-agent-card-desc {
+  font-size: 0.85em;
+  opacity: 0.7;
+  padding-top: 2px;
+}
+
+.discover-agent-card-caps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+  padding-top: 4px;
+}
+
+.discover-agent-card-caps .tool-badge {
+  font-size: 0.6em;
+  opacity: 0.4;
+}
+
+.activity-item {
+  display: flex;
+  gap: var(--space-sm);
+  padding: var(--space-xs) 0;
+  font-size: 0.85em;
+  border-bottom: 1px solid var(--color-fg);
+  opacity: 0.7;
+}
+
+.activity-item:last-child {
+  border-bottom: none;
+}
+
+.activity-item-time {
+  flex-shrink: 0;
+  opacity: 0.5;
+  font-size: 0.85em;
+  min-width: 60px;
+}
+
+.activity-item-icon {
+  flex-shrink: 0;
+  width: 20px;
+  text-align: center;
+}
+
+.agent-message-item {
+  padding: var(--space-xs) var(--space-sm);
+  border: 1px solid var(--color-fg);
+  border-radius: var(--radius);
+  opacity: 0.7;
+  font-size: 0.85em;
+}
+
+.agent-message-header {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.85em;
+  opacity: 0.6;
+  padding-bottom: 2px;
+}
+
+.discover-empty {
+  font-size: 0.85em;
+  opacity: 0.5;
+  padding: var(--space-sm) 0;
+}

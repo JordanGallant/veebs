@@ -17,6 +17,12 @@ export const store = {
   localAgentId: null,
   solanaAddress: null,
   evmAddress: null,
+  agentState: 'sleeping',
+  agentTools: [],
+  erc8004AgentId: null,
+  satiAgentId: null,
+  rocks: 0,
+  lastActive: null,
 
   // Twin
   id: null,
@@ -78,6 +84,12 @@ export function resetSession({ preservePendingSignup = false } = {}) {
   store.localAgentId = null;
   store.solanaAddress = null;
   store.evmAddress = null;
+  store.agentState = 'sleeping';
+  store.agentTools = [];
+  store.erc8004AgentId = null;
+  store.satiAgentId = null;
+  store.rocks = 0;
+  store.lastActive = null;
   store.ownerReferenceName = '';
   store.ownerReferenceFallbackName = '';
   store.id = null;

@@ -6,24 +6,50 @@ export function createChat(parent, options = {}) {
   const { initialScrollTop } = options;
   const hasInitialScroll = Number.isFinite(initialScrollTop);
   const log = el('div', { class: 'chat-log' });
-  const input = el('input', { class: 'input', type: 'text', placeholder: 'Type a message...' });
+  const input = el('input', { class: 'input', type: 'text', placeholder: 'Type a message...', maxlength: '2000' });
   const sendBtn = el('button', { class: 'btn' }, 'Send');
   const row = el('div', { class: 'chat-input-row' }, input, sendBtn);
   const wrapper = el('div', { class: 'chat-panel' }, log, row);
   parent.appendChild(wrapper);
 
-  function appendMessage(role, content, autoScroll = true) {
+  function appendMessage(role, content, extras = {}, autoScroll = true) {
     const cls = role === 'user' ? 'chat-msg chat-msg--user' : 'chat-msg chat-msg--twin';
-    log.appendChild(el('div', { class: cls }, content));
-    if (autoScroll) {
-      log.scrollTop = log.scrollHeight;
+    const msgEl = el('div', { class: cls }, content);
+
+    // Tool calls
+    if (Array.isArray(extras.toolCalls) && extras.toolCalls.length > 0) {
+      const toolsWrap = el('div', { class: 'chat-tool-calls' });
+      for (const tc of extras.toolCalls) {
+        const details = el('details', { class: 'chat-tool-call' });
+        const summary = el('summary', null, `Used: ${tc.name || 'tool'}`);
+        const pre = el('pre', null, tc.arguments || tc.input || JSON.stringify(tc, null, 2));
+        details.append(summary, pre);
+        toolsWrap.appendChild(details);
+      }
+      msgEl.appendChild(toolsWrap);
     }
+
+    // Products
+    if (Array.isArray(extras.products) && extras.products.length > 0) {
+      const productsWrap = el('div', { class: 'chat-products' });
+      for (const p of extras.products) {
+        const card = el('div', { class: 'chat-product-card' },
+          el('span', { class: 'bold' }, p.name || 'Product'),
+          p.price ? el('span', null, ` — ${p.price}`) : '',
+        );
+        productsWrap.appendChild(card);
+      }
+      msgEl.appendChild(productsWrap);
+    }
+
+    log.appendChild(msgEl);
+    if (autoScroll) log.scrollTop = log.scrollHeight;
   }
 
   function renderMessages() {
     clear(log);
     for (const msg of store.messages) {
-      appendMessage(msg.role, msg.content, false);
+      appendMessage(msg.role, msg.content, msg.extras || {}, false);
     }
     if (hasInitialScroll) {
       log.scrollTop = initialScrollTop;
@@ -42,7 +68,6 @@ export function createChat(parent, options = {}) {
     sendBtn.setAttribute('disabled', '');
     input.setAttribute('disabled', '');
 
-    // Show typing indicator
     const typing = el('div', { class: 'chat-msg chat-msg--twin chat-msg--typing' }, '...');
     log.appendChild(typing);
     log.scrollTop = log.scrollHeight;
@@ -51,9 +76,13 @@ export function createChat(parent, options = {}) {
       if (!store.user) throw new Error('Not signed in');
       const data = await sendMessage(text);
       const reply = data.response || "I'm not sure how to respond to that.";
-      store.messages.push({ role: 'twin', content: reply });
+      const extras = {
+        toolCalls: data.toolCalls || [],
+        products: data.products || [],
+      };
+      store.messages.push({ role: 'twin', content: reply, extras });
       if (typing.parentNode) typing.parentNode.removeChild(typing);
-      appendMessage('twin', reply);
+      appendMessage('twin', reply, extras);
     } catch (err) {
       if (typing.parentNode) typing.parentNode.removeChild(typing);
       const msg = err.message.includes('Authorization') || err.message.includes('signed in')
@@ -84,9 +113,7 @@ export function createChat(parent, options = {}) {
           renderMessages();
         }
       })
-      .catch(() => {
-        // Silently fail — just start fresh
-      });
+      .catch(() => {});
   }
 
   renderMessages();

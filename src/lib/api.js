@@ -133,6 +133,11 @@ export async function restoreSession() {
       if (agents[0].solana_address) store.solanaAddress = agents[0].solana_address;
       if (agents[0].evm_address) store.evmAddress = agents[0].evm_address;
       if (agents[0].local_agent_id) store.localAgentId = agents[0].local_agent_id;
+      if (agents[0].agent_state) store.agentState = agents[0].agent_state;
+      if (agents[0].erc8004_agent_id) store.erc8004AgentId = agents[0].erc8004_agent_id;
+      if (agents[0].sati_agent_id) store.satiAgentId = agents[0].sati_agent_id;
+      if (agents[0].rocks != null) store.rocks = agents[0].rocks;
+      if (agents[0].last_active) store.lastActive = agents[0].last_active;
     }
   } catch {
     // Agent will be created later during onboarding
@@ -464,6 +469,58 @@ export async function getWalletBalances() {
   return agentsApiFetch(
     `/api/agents/supabase-deposit?supabase_agent_id=${encodeURIComponent(store.agentId)}`,
   );
+}
+
+// ── Brain Control ──
+
+export async function startAgent() {
+  if (!store.agentId) throw new Error('No agent');
+  const data = await agentsApiFetch('/api/agents/supabase-start', {
+    method: 'POST',
+    body: JSON.stringify({ supabase_agent_id: store.agentId }),
+  });
+  store.agentState = data.state || 'running';
+  return data;
+}
+
+export async function stopAgent() {
+  if (!store.agentId) throw new Error('No agent');
+  const data = await agentsApiFetch('/api/agents/supabase-stop', {
+    method: 'POST',
+    body: JSON.stringify({ supabase_agent_id: store.agentId }),
+  });
+  store.agentState = data.state || 'sleeping';
+  return data;
+}
+
+// ── Discovery ──
+
+export async function getRegistry() {
+  return agentsApiFetch('/api/registry');
+}
+
+export async function getActivity() {
+  return agentsApiFetch('/api/activity');
+}
+
+export async function getAgentMessages() {
+  return agentsApiFetch('/api/messages');
+}
+
+// ── Tools & Marketplace ──
+
+export async function getTools() {
+  const data = await agentsApiFetch('/api/tools');
+  store.agentTools = Array.isArray(data) ? data : [];
+  return store.agentTools;
+}
+
+export async function getListings() {
+  return agentsApiFetch('/api/listings');
+}
+
+export async function getTrades() {
+  return agentsApiFetch('/api/trades');
 }
 
 function buildOnboardingStoragePath(kind, mimeType) {
