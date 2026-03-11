@@ -65,7 +65,7 @@ function render(container) {
 
   const heading = el('h1', { class: 'text-lg bold recording-heading' }, '');
   const helpToggle = el('button', {
-    class: 'recording-help-toggle',
+    class: 'recording-help-toggle help-toggle',
     type: 'button',
     'aria-expanded': 'false',
     'aria-controls': 'recording-help',
@@ -73,17 +73,32 @@ function render(container) {
   }, '?');
   const prompt = el(
     'p',
-    { class: 'secondary text-sm recording-help-text' },
+    { class: 'secondary text-sm recording-help-text help-text' },
     'These answers seed your twin character. This process is recorded to capture how you look and sound.',
   );
-  const promptBody = el('div', { class: 'recording-help-body' }, prompt);
-  const promptWrap = el('div', { class: 'recording-help-wrap', id: 'recording-help' }, promptBody);
+  const promptBody = el('div', { class: 'recording-help-body help-body' }, prompt);
+  const promptWrap = el('div', { class: 'recording-help-wrap help-wrap', id: 'recording-help' }, promptBody);
   const headingRow = el('div', { class: 'recording-heading-row' }, heading, helpToggle);
+  const ownerField = el('div', { class: 'recording-owner-field' });
+  const ownerLabel = el('label', { class: 'bold', for: 'recording-owner-reference-name' }, 'How should your twin call you?');
+  const ownerHint = el(
+    'p',
+    { class: 'secondary text-sm' },
+    'This is used in shared messages and can be changed later in settings.',
+  );
+  const ownerInput = el('input', {
+    id: 'recording-owner-reference-name',
+    class: 'input question-input',
+    type: 'text',
+    value: store.ownerReferenceName || '',
+  });
+  ownerField.append(ownerLabel, ownerHint, ownerInput);
 
   const recDot = el('span', { class: 'rec-dot', style: 'display:none' });
   const timerEl = el('span', { class: 'rec-timer' }, '00:00');
   const status = el('div', { class: 'rec-status' }, recDot, timerEl);
-  const flowBtn = el('button', { class: 'btn' }, 'Start');
+  status.style.display = 'none';
+  const flowBtn = el('button', { class: 'btn' }, 'Continue');
   const controls = el('div', { class: 'rec-controls rec-controls--compact' }, flowBtn);
   const errorBox = el('p', { class: 'error', style: 'display:none' });
 
@@ -97,18 +112,20 @@ function render(container) {
     { class: 'overlay-panel overlay-panel--compact overlay-shell recording-panel' },
     headingRow,
     promptWrap,
+    ownerField,
     status,
     controls,
     errorBox,
   );
-  const recordingContent = el('div', { class: 'recording-content' }, recordingPanel);
-  const wrapper = el('div', { class: 'screen recording-screen' }, recordingContent);
+  const recordingContent = el('div', { class: 'recording-content screen-content' }, recordingPanel);
+  const wrapper = el('div', { class: 'screen recording-screen screen-shell' }, recordingContent);
 
   let recorder = null;
   let timerInterval = 0;
   let elapsed = 0;
   let questionIdx = -1;
   let isRecording = false;
+  let ownerStepComplete = false;
 
   function typeQuestionHeading(text, swap) {
     if (stopQuestionType) stopQuestionType();
@@ -121,6 +138,24 @@ function render(container) {
 
   on(flowBtn, 'click', async () => {
     errorBox.style.display = 'none';
+
+    if (!ownerStepComplete) {
+      const ownerReferenceName = ownerInput.value.trim();
+      if (!ownerReferenceName) {
+        errorBox.style.display = '';
+        errorBox.textContent = 'Please tell your twin how to address you.';
+        return;
+      }
+
+      store.ownerReferenceName = ownerReferenceName;
+      store.ownerReferenceFallbackName = ownerReferenceName;
+      ownerStepComplete = true;
+      ownerField.style.display = 'none';
+      status.style.display = '';
+      flowBtn.textContent = 'Start';
+      typeQuestionHeading('Answer some questions', true);
+      return;
+    }
 
     if (!isRecording) {
       recorder = createAudioRecorder(stream);
@@ -186,6 +221,7 @@ function render(container) {
     cam.setWave(false);
     store.onboardingMode = 'recorded';
     store.onboardingAnswers = {
+      ownerReferenceName: store.ownerReferenceName || '',
       prompts: [...TWIN_QUESTIONS],
     };
     store.hasAnsweredQuestions = true;
@@ -217,6 +253,7 @@ function render(container) {
 
   window.requestAnimationFrame(() => {
     recordingPanel.classList.add('is-visible');
-    typeQuestionHeading('Answer some questions', false);
+    typeQuestionHeading('How should your twin call you?', false);
+    ownerInput.focus();
   });
 }

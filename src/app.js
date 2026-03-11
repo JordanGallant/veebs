@@ -9,7 +9,13 @@ import { registerBirthing } from './screens/birthing.js';
 import { registerDashboard } from './screens/dashboard.js';
 import { registerAuth } from './screens/auth.js';
 import { registerShare } from './screens/share.js';
-import { store, restorePendingSignup, savePendingSignup } from './lib/store.js';
+import {
+  store,
+  clearOnboardingDraft,
+  resetSession,
+  restorePendingSignup,
+  savePendingSignup,
+} from './lib/store.js';
 import { restoreSession, isEmailVerified, markOnboardingPaid } from './lib/api.js';
 import { applyPlanSelection } from './lib/plans.js';
 
@@ -37,8 +43,13 @@ function syncSharePathToHash() {
 }
 
 async function init() {
-  await restoreSession();
   restorePendingSignup();
+  try {
+    await restoreSession();
+  } catch (err) {
+    console.warn('Could not restore auth session:', err.message);
+    resetSession({ preservePendingSignup: true });
+  }
 
   const urlParams = new URLSearchParams(window.location.search);
   if (urlParams.get('payment') === 'success') {
@@ -46,6 +57,13 @@ async function init() {
     const pendingPlan = localStorage.getItem('ct_pending_plan');
 
     if (pendingPlan && store.user && isEmailVerified(store.user)) {
+      if (store.agentId) {
+        localStorage.removeItem('ct_pending_plan');
+        clearOnboardingDraft();
+        window.location.hash = 'dashboard';
+        return;
+      }
+
       localStorage.removeItem('ct_pending_plan');
       applyPlanSelection(pendingPlan);
       try {
@@ -84,4 +102,31 @@ async function init() {
   }
 }
 
-init();
+init().catch((err) => {
+  console.error('App init failed:', err);
+  const app = document.getElementById('app');
+  if (!app) return;
+
+  app.innerHTML = '';
+  const panel = document.createElement('div');
+  panel.className = 'overlay-panel overlay-shell';
+
+  const heading = document.createElement('h1');
+  heading.className = 'text-lg bold';
+  heading.textContent = 'Could not start the app';
+
+  const copy = document.createElement('p');
+  copy.className = 'secondary text-sm';
+  copy.textContent = 'Please refresh and try again.';
+
+  const retryBtn = document.createElement('button');
+  retryBtn.className = 'btn';
+  retryBtn.type = 'button';
+  retryBtn.textContent = 'Refresh';
+  retryBtn.addEventListener('click', () => {
+    window.location.reload();
+  });
+
+  panel.append(heading, copy, retryBtn);
+  app.appendChild(panel);
+});
