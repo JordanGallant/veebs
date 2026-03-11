@@ -33,18 +33,6 @@ export function registerQuestions() {
   });
 }
 
-function buildCharacterProfile(answers) {
-  const [goals, hobbies, important, duties] = answers.map((text) => text || 'Not provided.');
-  return [
-    'My twin should follow these user notes:',
-    `Goals in life: ${goals}`,
-    `Hobbies and interests: ${hobbies}`,
-    `Most important right now: ${important}`,
-    `Duties to handle: ${duties}`,
-    'Keep responses clear, practical, and aligned with these priorities.',
-  ].join(' ');
-}
-
 function buildAnswerRecord(answers) {
   return {
     ownerReferenceName: store.ownerReferenceName || '',
@@ -201,7 +189,7 @@ function render(container) {
       return;
     }
 
-    store.characterProfile = buildCharacterProfile(answers);
+    // Soul is generated server-side after birthing — just store answers
     store.onboardingMode = 'typed';
     store.onboardingAnswers = buildAnswerRecord(answers);
     store.hasAnsweredQuestions = true;

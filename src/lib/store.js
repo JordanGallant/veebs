@@ -1,6 +1,5 @@
 export const DEFAULT_TWIN_NAME = 'Unnamed Twin';
-export const DEFAULT_CHARACTER_PROFILE =
-  'My twin is calm, thoughtful, and quietly optimistic. They listen first, then answer with clear and practical guidance in plain English. They enjoy creative work such as writing concepts, naming ideas, and shaping rough plans into concrete next steps. They are reliable with routine duties like organizing tasks, drafting follow-up messages, and keeping priorities visible. Their tone is warm and direct, with light humor when the moment allows it, but they always stay respectful and focused on helping me move forward.';
+// No default — soul is generated server-side via /api/agents/generate-soul
 
 const PENDING_SIGNUP_STORAGE_KEY = 'ct_pending_signup';
 
@@ -33,7 +32,7 @@ export const store = {
   photoEditError: null,
   photoEditPromise: null,
   audioBlob: null,
-  characterProfile: DEFAULT_CHARACTER_PROFILE,
+  characterProfile: '',
   balance: 0,
   monthlySpendingLimit: null,
   onDemandUsageEnabled: false,
@@ -95,7 +94,7 @@ export function resetSession({ preservePendingSignup = false } = {}) {
   store.id = null;
   store.name = DEFAULT_TWIN_NAME;
   store.messages = [];
-  store.characterProfile = DEFAULT_CHARACTER_PROFILE;
+  store.characterProfile = '';
   store.balance = 0;
   store.monthlySpendingLimit = null;
   store.asciiCamera = null;

@@ -1,6 +1,8 @@
 import { el, on, clear } from '../lib/dom.js';
 import { store } from '../lib/store.js';
-import { sendMessage, getChatHistory } from '../lib/api.js';
+import { sendMessage, getChatHistory, speakText } from '../lib/api.js';
+
+let currentAudio = null;
 
 export function createChat(parent, options = {}) {
   const { initialScrollTop } = options;
@@ -14,7 +16,67 @@ export function createChat(parent, options = {}) {
 
   function appendMessage(role, content, extras = {}, autoScroll = true) {
     const cls = role === 'user' ? 'chat-msg chat-msg--user' : 'chat-msg chat-msg--twin';
-    const msgEl = el('div', { class: cls }, content);
+    const msgEl = el('div', { class: cls });
+
+    const textEl = el('span', null, content);
+    msgEl.appendChild(textEl);
+
+    // Speak button for agent messages
+    if (role !== 'user' && content && !content.startsWith('Error:')) {
+      const speakBtn = el('button', {
+        class: 'chat-speak-btn',
+        type: 'button',
+        title: 'Listen',
+        'aria-label': 'Listen to message',
+      }, '\u{1F50A}');
+
+      let speaking = false;
+
+      on(speakBtn, 'click', async () => {
+        // Stop current audio if playing
+        if (currentAudio) {
+          currentAudio.pause();
+          currentAudio = null;
+        }
+
+        if (speaking) {
+          speaking = false;
+          speakBtn.textContent = '\u{1F50A}';
+          return;
+        }
+
+        speaking = true;
+        speakBtn.textContent = '...';
+
+        try {
+          const voice = await speakText(content);
+          if (!voice.voice_memo_url) throw new Error('No audio');
+
+          const audio = new Audio(voice.voice_memo_url);
+          currentAudio = audio;
+
+          audio.addEventListener('ended', () => {
+            speaking = false;
+            speakBtn.textContent = '\u{1F50A}';
+            if (currentAudio === audio) currentAudio = null;
+          });
+
+          audio.addEventListener('error', () => {
+            speaking = false;
+            speakBtn.textContent = '\u{1F50A}';
+            if (currentAudio === audio) currentAudio = null;
+          });
+
+          await audio.play();
+          speakBtn.textContent = '\u{23F9}';
+        } catch {
+          speaking = false;
+          speakBtn.textContent = '\u{1F50A}';
+        }
+      });
+
+      msgEl.appendChild(speakBtn);
+    }
 
     // Tool calls
     if (Array.isArray(extras.toolCalls) && extras.toolCalls.length > 0) {

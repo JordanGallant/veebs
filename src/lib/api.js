@@ -235,6 +235,18 @@ export async function loadOrCreateAgent(name, characterProfile) {
   return createAgent(name, 'CyberTwin agent', characterProfile || '');
 }
 
+export async function isAgentNameTaken(name, excludeAgentId) {
+  const { data, error } = await supabase
+    .from('agents')
+    .select('id')
+    .ilike('name', name)
+    .limit(1);
+  if (error) throw new Error(error.message);
+  if (!data || data.length === 0) return false;
+  // If the only match is our own agent, it's fine
+  return excludeAgentId ? data[0].id !== excludeAgentId : true;
+}
+
 export async function saveAgentName(name) {
   const trimmedName = name.trim();
   if (!trimmedName) {
@@ -245,6 +257,12 @@ export async function saveAgentName(name) {
   if (!agentId) {
     const agent = await loadOrCreateAgent(trimmedName, store.characterProfile);
     agentId = agent.id;
+  }
+
+  // Check uniqueness
+  const taken = await isAgentNameTaken(trimmedName, agentId);
+  if (taken) {
+    throw new Error('That name is already taken. Choose a unique name.');
   }
 
   const { data, error } = await supabase
@@ -438,14 +456,14 @@ export async function markOnboardingPaid(planId) {
 
 // ── Checkout, Deposits & Balances ──
 
-export async function createCheckout(amountUsd, { embedded = false } = {}) {
+export async function createCheckout(amountUsd, { chain = 'solana', embedded = false } = {}) {
   if (!store.agentId) return {};
   return agentsApiFetch('/api/agents/supabase-checkout', {
     method: 'POST',
     body: JSON.stringify({
       supabase_agent_id: store.agentId,
       amount_usd: amountUsd,
-      chain: 'solana',
+      chain,
       return_url: window.location.origin,
       embedded,
     }),
@@ -457,6 +475,43 @@ export async function getWalletBalances() {
   return agentsApiFetch(
     `/api/agents/supabase-deposit?supabase_agent_id=${encodeURIComponent(store.agentId)}`,
   );
+}
+
+// ── Soul Generation ──
+
+export async function generateSoul() {
+  if (!store.agentId) throw new Error('No agent');
+  const data = await agentsApiFetch('/api/agents/generate-soul', {
+    method: 'POST',
+    body: JSON.stringify({ supabase_agent_id: store.agentId }),
+  });
+  // Backend saves personality to Supabase — update local store
+  if (data.personality) {
+    store.characterProfile = data.personality;
+  }
+  return data;
+}
+
+// ── Voice Clone & TTS ──
+
+export async function cloneVoice() {
+  if (!store.agentId) throw new Error('No agent');
+  return agentsApiFetch('/api/agents/clone-voice', {
+    method: 'POST',
+    body: JSON.stringify({ supabase_agent_id: store.agentId }),
+  });
+}
+
+export async function speakText(text) {
+  if (!store.agentId) throw new Error('No agent');
+  const data = await agentsApiFetch('/api/agents/speak', {
+    method: 'POST',
+    body: JSON.stringify({
+      supabase_agent_id: store.agentId,
+      text,
+    }),
+  });
+  return data;
 }
 
 // ── Brain Control ──
@@ -482,6 +537,36 @@ export async function stopAgent() {
 }
 
 // ── Discovery ──
+
+export async function getAgentById(agentId) {
+  const { data, error } = await supabase
+    .from('agents')
+    .select('id, name, description, personality, profile_image_url, solana_address, evm_address, agent_state, rocks, last_active, erc8004_agent_id, sati_agent_id')
+    .eq('id', agentId)
+    .single();
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+export async function searchAgents(query) {
+  const { data, error } = await supabase
+    .from('agents')
+    .select('id, name, description, personality, profile_image_url, solana_address, evm_address, agent_state, rocks, last_active, erc8004_agent_id, sati_agent_id')
+    .ilike('name', `%${query}%`)
+    .order('last_active', { ascending: false, nullsFirst: false })
+    .limit(20);
+  if (error) throw new Error(error.message);
+  return data || [];
+}
+
+export async function getAllAgents() {
+  const { data, error } = await supabase
+    .from('agents')
+    .select('id, name, description, personality, profile_image_url, solana_address, evm_address, agent_state, rocks, last_active, erc8004_agent_id, sati_agent_id')
+    .order('last_active', { ascending: false, nullsFirst: false });
+  if (error) throw new Error(error.message);
+  return data || [];
+}
 
 export async function getRegistry() {
   return agentsApiFetch('/api/registry');

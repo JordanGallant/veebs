@@ -12,12 +12,14 @@ import {
   startAgent,
   stopAgent,
   getTools,
+  generateSoul,
 } from '../lib/api.js';
 import { PLAN_OPTIONS, applyPlanSelection, getPlanById } from '../lib/plans.js';
 import { createChat } from '../components/chat.js';
 import { createCharacter } from '../components/character.js';
 import { createWallet } from '../components/wallet.js';
 import { createDiscover } from '../components/discover.js';
+import { createGlobalFeed } from '../components/global-feed.js';
 import { openShareLayover } from '../components/share-layover.js';
 import { animateTypewriter } from '../lib/typewriter.js';
 
@@ -27,6 +29,7 @@ const TAB_LABELS = {
   chat: 'Chat',
   wallet: 'Wallet',
   discover: 'Discover',
+  global: 'Global',
 };
 
 const PLAN_TOKEN_QUOTAS = {
@@ -125,8 +128,32 @@ async function render(container) {
     'aria-live': 'polite',
   });
 
+  // Username chip (copyable)
+  const username = store.name && store.name.trim() ? store.name.trim() : null;
+  const usernameChip = username
+    ? el('span', {
+      class: 'agent-chip agent-chip--copyable',
+      title: 'Click to copy username',
+    }, `@${username}`)
+    : null;
+
+  const chipCopyStatus = el('span', { class: 'agent-chip-copy-status secondary text-xs' });
+
+  if (usernameChip) {
+    on(usernameChip, 'click', async () => {
+      try {
+        await navigator.clipboard.writeText(username);
+        chipCopyStatus.textContent = 'Copied!';
+        setTimeout(() => { chipCopyStatus.textContent = ''; }, 1500);
+      } catch {
+        chipCopyStatus.textContent = 'Copy failed';
+      }
+    });
+  }
+
   // On-chain identity chips
   const chips = el('div', { class: 'agent-chips' });
+  if (usernameChip) chips.append(usernameChip, chipCopyStatus);
   if (store.solanaAddress) {
     const short = store.solanaAddress.slice(0, 6) + '...' + store.solanaAddress.slice(-4);
     chips.appendChild(el('a', {
@@ -181,7 +208,7 @@ async function render(container) {
   const tabBar = el('div', { class: 'tabs' });
   const tabContent = el('div', { class: 'tab-content dashboard-tab-content' });
 
-  const tabs = ['chat', 'wallet', 'discover'];
+  const tabs = ['chat', 'wallet', 'discover', 'global'];
   let activeTab = 'wallet';
   let settingsOpen = false;
   let profileExpanded = false;
@@ -189,6 +216,7 @@ async function render(container) {
     chat: null,
     wallet: null,
     discover: null,
+    global: null,
     settings: null,
   };
   let activePanelKey = null;
@@ -384,6 +412,9 @@ async function render(container) {
         case 'discover':
           createDiscover(tabContent);
           break;
+        case 'global':
+          createGlobalFeed(tabContent);
+          break;
       }
     }
 
@@ -444,6 +475,32 @@ function createSettings(parent, { updateDisplayedName }) {
         renderSettingsView();
       });
       return;
+    }
+
+    // ── Username display ──
+    const agentIdSection = el('div', { class: 'settings-section settings-section--compact' });
+    agentIdSection.appendChild(el('p', { class: 'bold' }, 'Username'));
+    const currentName = store.name && store.name.trim() ? store.name.trim() : null;
+    if (currentName) {
+      const nameText = el('p', {
+        class: 'secondary',
+        style: 'cursor:pointer;',
+        title: 'Click to copy username',
+      }, `@${currentName}`);
+      const nameCopyStatus = el('p', { class: 'secondary text-xs' });
+      on(nameText, 'click', async () => {
+        try {
+          await navigator.clipboard.writeText(currentName);
+          nameCopyStatus.textContent = 'Copied!';
+          setTimeout(() => { nameCopyStatus.textContent = ''; }, 1500);
+        } catch {
+          nameCopyStatus.textContent = 'Copy failed';
+        }
+      });
+      agentIdSection.append(nameText, nameCopyStatus);
+      agentIdSection.appendChild(el('p', { class: 'secondary text-xs' }, 'Other agents can find you by this name. It must be unique.'));
+    } else {
+      agentIdSection.appendChild(el('p', { class: 'secondary text-xs' }, 'Set a twin name below — it will be your unique username.'));
     }
 
     const characterSection = el('div', { class: 'settings-section' });
@@ -612,7 +669,47 @@ function createSettings(parent, { updateDisplayedName }) {
     characterSection.appendChild(nameActions);
     characterSection.appendChild(nameStatus);
     characterSection.appendChild(el('hr', { class: 'divider' }));
-    characterSection.appendChild(el('p', { class: 'bold' }, 'Character'));
+    characterSection.appendChild(el('p', { class: 'bold' }, 'Soul'));
+
+    // Regenerate Soul button
+    const regenSoulBtn = el('button', { class: 'btn btn--secondary', type: 'button' }, 'Regenerate Soul');
+    const regenSoulStatus = el('p', { class: 'secondary text-sm' });
+    let regenerating = false;
+
+    on(regenSoulBtn, 'click', async () => {
+      if (regenerating) return;
+      if (!store.agentId) {
+        regenSoulStatus.textContent = 'Create your twin first.';
+        return;
+      }
+      regenerating = true;
+      regenSoulBtn.setAttribute('disabled', '');
+      regenSoulBtn.textContent = 'Generating...';
+      regenSoulStatus.textContent = 'Generating soul from your onboarding data...';
+
+      try {
+        const result = await generateSoul();
+        const newSoul = result.personality || store.characterProfile;
+        savedCharacterProfile = newSoul;
+        store.characterProfile = newSoul;
+        characterEditor.value = newSoul;
+        regenSoulStatus.textContent = 'Soul generated.';
+      } catch (err) {
+        regenSoulStatus.textContent = err.message;
+      } finally {
+        regenerating = false;
+        regenSoulBtn.removeAttribute('disabled');
+        regenSoulBtn.textContent = 'Regenerate Soul';
+        renderCharacterActions(characterEditor.value);
+      }
+    });
+
+    const soulActions = el('div', { class: 'settings-name-actions' }, regenSoulBtn);
+    characterSection.append(
+      el('p', { class: 'secondary text-xs' }, 'Your soul is generated from your onboarding answers and voice. You can also edit it manually below.'),
+      soulActions,
+      regenSoulStatus,
+    );
 
     const characterActions = el('div', { class: 'settings-name-actions' });
     const characterStatus = el('p', { class: 'secondary text-sm' });
@@ -757,7 +854,42 @@ function createSettings(parent, { updateDisplayedName }) {
       capsBadges.appendChild(el('span', { class: 'secondary text-sm' }, 'Could not load tools.'));
     });
 
-    wrapper.append(characterSection, brainSection, capsSection, billingSection, signOutBtn);
+    // ── Tokenize ──
+    const tokenSection = el('div', { class: 'settings-section' });
+    tokenSection.appendChild(el('p', { class: 'bold' }, 'Tokenize'));
+
+    if (store.erc8004AgentId || store.satiAgentId) {
+      const tokenList = el('div', { class: 'discover-token-badges', style: 'padding:var(--space-xs) 0' });
+      if (store.erc8004AgentId) {
+        tokenList.appendChild(el('a', {
+          class: 'token-badge token-badge--erc',
+          href: store.evmAddress ? `https://sepolia.basescan.org/address/${store.evmAddress}` : '#',
+          target: '_blank', rel: 'noopener',
+        }, `ERC-8004 #${store.erc8004AgentId}`));
+      }
+      if (store.satiAgentId) {
+        const satiShort = store.satiAgentId.length > 20
+          ? store.satiAgentId.slice(0, 8) + '...' + store.satiAgentId.slice(-6)
+          : store.satiAgentId;
+        tokenList.appendChild(el('a', {
+          class: 'token-badge token-badge--sati',
+          href: store.solanaAddress ? `https://explorer.solana.com/address/${store.solanaAddress}?cluster=devnet` : '#',
+          target: '_blank', rel: 'noopener',
+        }, `SATI ${satiShort}`));
+      }
+      tokenSection.appendChild(tokenList);
+      tokenSection.appendChild(el('p', { class: 'secondary text-xs' }, 'Your agent has launched tokens. Check earnings via chat: "check my token earnings"'));
+    } else {
+      tokenSection.appendChild(el('p', { class: 'secondary text-sm' }, 'Your agent can launch tokens on Base or Solana via Bankr.'));
+      tokenSection.appendChild(el('p', { class: 'secondary text-xs' }, 'Tell your agent in chat:'));
+      const examples = el('div', { class: 'token-launch-examples' });
+      examples.appendChild(el('code', { class: 'token-example' }, '"Launch a token called MyCoin with symbol MC on base"'));
+      examples.appendChild(el('code', { class: 'token-example' }, '"Launch a token called MyCoin with symbol MC on solana"'));
+      tokenSection.appendChild(examples);
+      tokenSection.appendChild(el('p', { class: 'secondary text-xs' }, 'Gas is free (sponsored). Your agent earns swap fees automatically.'));
+    }
+
+    wrapper.append(agentIdSection, characterSection, brainSection, tokenSection, capsSection, billingSection, signOutBtn);
   }
 
   renderSettingsView();

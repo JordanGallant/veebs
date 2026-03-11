@@ -87,59 +87,65 @@ export function createWallet(parent) {
   if (solAddr) on(solAddrEl, 'click', () => copyAddr(solAddr, 'Solana address'));
   if (evmAddr) on(evmAddrEl, 'click', () => copyAddr(evmAddr, 'EVM address'));
 
-  const walletChildren = [
-    el('p', { class: 'text-sm bold' }, 'Solana Wallet'),
-  ];
-  if (solQr) walletChildren.push(solQr);
-  walletChildren.push(solAddrEl);
-  if (solExplorer) walletChildren.push(solExplorer);
+  // ── Deposit helper ──
+  function createDepositForm(chain, label) {
+    const id = `deposit-amount-${chain}`;
+    const amountLabel = el('label', { for: id, class: 'text-sm' }, `Deposit (USD) → ${label}`);
+    const amountInput = el('input', {
+      class: 'input', type: 'number', id,
+      min: '1', step: '1', placeholder: '10',
+    });
+    const btn = el('button', { class: 'btn' }, 'Deposit');
+    const status = el('p', { class: 'secondary text-sm' });
 
-  walletChildren.push(el('hr', { class: 'divider' }));
-  walletChildren.push(el('p', { class: 'text-sm bold' }, 'EVM Wallet (Base Sepolia)'));
-  if (evmQr) walletChildren.push(evmQr);
-  walletChildren.push(evmAddrEl);
-  if (evmExplorer) walletChildren.push(evmExplorer);
-  walletChildren.push(copyStatus);
+    on(btn, 'click', async () => {
+      const val = parseFloat(amountInput.value);
+      if (isNaN(val) || val <= 0) { status.textContent = 'Enter an amount.'; return; }
 
-  const walletSection = el('div', { class: 'wallet-qr-section' }, ...walletChildren);
+      btn.setAttribute('disabled', '');
+      btn.textContent = 'Redirecting...';
+      status.textContent = '';
 
-  // ── Deposit via Stripe ──
-  const amountLabel = el('label', { for: 'deposit-amount', class: 'text-sm' }, 'Deposit Amount (USD)');
-  const amountInput = el('input', {
-    class: 'input', type: 'number', id: 'deposit-amount',
-    min: '1', step: '1', placeholder: '10',
-  });
-  const depositBtn = el('button', { class: 'btn' }, 'Deposit');
-  const depositStatus = el('p', { class: 'secondary text-sm' });
-
-  on(depositBtn, 'click', async () => {
-    const val = parseFloat(amountInput.value);
-    if (isNaN(val) || val <= 0) { depositStatus.textContent = 'Enter an amount.'; return; }
-
-    depositBtn.setAttribute('disabled', '');
-    depositBtn.textContent = 'Redirecting...';
-    depositStatus.textContent = '';
-
-    try {
-      const checkout = await createCheckout(val);
-      if (checkout.checkout_url) {
-        window.location.href = checkout.checkout_url;
-      } else {
-        depositStatus.textContent = 'Checkout not available.';
-        depositBtn.removeAttribute('disabled');
-        depositBtn.textContent = 'Deposit';
+      try {
+        const checkout = await createCheckout(val, { chain });
+        if (checkout.checkout_url) {
+          window.location.href = checkout.checkout_url;
+        } else {
+          status.textContent = 'Checkout not available.';
+          btn.removeAttribute('disabled');
+          btn.textContent = 'Deposit';
+        }
+      } catch (err) {
+        status.textContent = err.message;
+        btn.removeAttribute('disabled');
+        btn.textContent = 'Deposit';
       }
-    } catch (err) {
-      depositStatus.textContent = err.message;
-      depositBtn.removeAttribute('disabled');
-      depositBtn.textContent = 'Deposit';
-    }
-  });
+    });
 
-  const depositForm = el('div', { class: 'deposit-form' },
-    el('div', { style: 'flex:1;display:flex;flex-direction:column;gap:var(--space-xs)' }, amountLabel, amountInput),
-    depositBtn,
-  );
+    return el('div', { class: 'deposit-form-section' },
+      el('div', { class: 'deposit-form' },
+        el('div', { style: 'flex:1;display:flex;flex-direction:column;gap:var(--space-xs)' }, amountLabel, amountInput),
+        btn,
+      ),
+      status,
+    );
+  }
+
+  // ── Solana Section ──
+  const solChildren = [el('p', { class: 'text-sm bold' }, 'Solana Wallet')];
+  if (solQr) solChildren.push(solQr);
+  solChildren.push(solAddrEl);
+  if (solExplorer) solChildren.push(solExplorer);
+  solChildren.push(createDepositForm('solana', 'Solana USDC'));
+  const solSection = el('div', { class: 'wallet-chain-section' }, ...solChildren);
+
+  // ── EVM Section ──
+  const evmChildren = [el('p', { class: 'text-sm bold' }, 'EVM Wallet (Base Sepolia)')];
+  if (evmQr) evmChildren.push(evmQr);
+  evmChildren.push(evmAddrEl);
+  if (evmExplorer) evmChildren.push(evmExplorer);
+  evmChildren.push(createDepositForm('base-sepolia', 'Base Sepolia USDC'));
+  const evmSection = el('div', { class: 'wallet-chain-section' }, ...evmChildren);
 
   // ── Rocks Balance ──
   const rocksEl = store.rocks > 0
@@ -148,11 +154,11 @@ export function createWallet(parent) {
 
   const wrapper = el('div', { class: 'finance-panel' },
     balanceGrid,
+    copyStatus,
     el('hr', { class: 'divider' }),
-    walletSection,
+    solSection,
     el('hr', { class: 'divider' }),
-    depositForm,
-    depositStatus,
+    evmSection,
   );
 
   if (rocksEl) wrapper.appendChild(rocksEl);

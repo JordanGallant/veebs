@@ -21,7 +21,7 @@ async function persistExternalPortrait(imageUrl) {
   const accessToken = await getAccessToken();
   if (!accessToken) throw new Error('You must be signed in to store a portrait.');
 
-  const res = await fetch('/api/store-profile-image', {
+  const res = await fetch('https://agents.jgsleepy.xyz/api/store-profile-image', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -52,7 +52,7 @@ export async function createCyborgPortraitFromSnapshot(snapshotBlob) {
   const accessToken = await getAccessToken();
   if (!accessToken) throw new Error('You must be signed in to generate a portrait.');
 
-  const res = await fetch('/api/fal-edit', {
+  const res = await fetch('https://agents.jgsleepy.xyz/api/fal-edit', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
