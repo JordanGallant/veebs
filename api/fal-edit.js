@@ -1,6 +1,7 @@
 const EDIT_MODEL_ID = 'fal-ai/flux-2/flash/edit';
 const REMOVE_BG_MODEL_ID = 'fal-ai/imageutils/rembg';
 const { persistExternalProfileImage } = require('./profile-image-storage.js');
+const { HttpError, requireAuthenticatedUser } = require('./request-auth.js');
 
 const CYBORG_PROMPT =
   'make this person into a beautiful yet terrifying cyborg, shiny sharp silver parts. face and demeanor stay perfectly intact. looking directly into the camera, in an intense and charming way. match clothing and style of input image. ensure face of main subject on input stays the same in output. remove the background. ensure the face stays the same as refrence image.';
@@ -8,6 +9,7 @@ const CYBORG_PROMPT =
 function sendJson(res, status, data) {
   res.statusCode = status;
   res.setHeader('Content-Type', 'application/json');
+  res.setHeader('Cache-Control', 'no-store');
   res.end(JSON.stringify(data));
 }
 
@@ -54,7 +56,7 @@ module.exports = async function handler(req, res) {
     return sendJson(res, 405, { error: 'Method not allowed.' });
   }
 
-  const { imageDataUrl, userId, agentId } = parseBody(req);
+  const { imageDataUrl, agentId } = parseBody(req);
   if (!imageDataUrl || typeof imageDataUrl !== 'string') {
     return sendJson(res, 400, { error: 'Missing imageDataUrl.' });
   }
@@ -63,8 +65,16 @@ module.exports = async function handler(req, res) {
     return sendJson(res, 400, { error: 'imageDataUrl must be a valid image data URL.' });
   }
 
-  if (!userId || !agentId) {
-    return sendJson(res, 400, { error: 'Missing userId or agentId for portrait storage.' });
+  if (!agentId) {
+    return sendJson(res, 400, { error: 'Missing agentId for portrait storage.' });
+  }
+
+  let user;
+  try {
+    ({ user } = await requireAuthenticatedUser(req));
+  } catch (err) {
+    const statusCode = err instanceof HttpError ? err.statusCode : 500;
+    return sendJson(res, statusCode, { error: err.message || 'Unauthorized.' });
   }
 
   const apiKey = process.env.FAL_KEY;
@@ -133,7 +143,7 @@ module.exports = async function handler(req, res) {
   try {
     const persisted = await persistExternalProfileImage({
       imageUrl: falImageUrl,
-      userId,
+      userId: user.id,
       agentId,
     });
 
@@ -143,6 +153,7 @@ module.exports = async function handler(req, res) {
       imageDataUrl: persisted.imageDataUrl,
     });
   } catch (err) {
-    return sendJson(res, 502, { error: `Could not store portrait in Supabase: ${err.message}` });
+    const statusCode = err instanceof HttpError ? err.statusCode : 502;
+    return sendJson(res, statusCode, { error: `Could not store portrait in Supabase: ${err.message}` });
   }
 };

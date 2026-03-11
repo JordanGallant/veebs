@@ -96,8 +96,8 @@ async function render(container) {
   const heading = el('h1', { class: 'text-xl bold birthing-heading' }, '');
   const status = el('p', { class: 'birthing-status' }, BIRTHING_MESSAGES[0]);
   const panel = el('div', { class: 'overlay-panel overlay-panel--compact overlay-shell' }, heading, status);
-  const content = el('div', { class: 'birthing-content' }, panel);
-  const wrapper = el('div', { class: 'screen recording-screen' }, content);
+  const content = el('div', { class: 'birthing-content screen-content' }, panel);
+  const wrapper = el('div', { class: 'screen recording-screen screen-shell' }, content);
 
   const layer = getAsciiLayer();
   if (layer) {

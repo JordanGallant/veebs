@@ -1,21 +1,28 @@
+export const DEFAULT_TWIN_NAME = 'Unnamed Twin';
+export const DEFAULT_CHARACTER_PROFILE =
+  'My twin is calm, thoughtful, and quietly optimistic. They listen first, then answer with clear and practical guidance in plain English. They enjoy creative work such as writing concepts, naming ideas, and shaping rough plans into concrete next steps. They are reliable with routine duties like organizing tasks, drafting follow-up messages, and keeping priorities visible. Their tone is warm and direct, with light humor when the moment allows it, but they always stay respectful and focused on helping me move forward.';
+
+const PENDING_SIGNUP_STORAGE_KEY = 'ct_pending_signup';
+
 export const store = {
   // Auth (managed by Supabase — user object from supabase.auth)
   user: null,
   agentId: null,
   pendingSignupEmail: null,
   pendingSignupName: null,
+  ownerReferenceName: '',
+  ownerReferenceFallbackName: '',
 
   // Twin
   id: null,
-  name: 'Unnamed Twin',
+  name: DEFAULT_TWIN_NAME,
   photoBlob: null,
   photoUrl: null,
   photoEditPending: false,
   photoEditError: null,
   photoEditPromise: null,
   audioBlob: null,
-  characterProfile:
-    'My twin is calm, thoughtful, and quietly optimistic. They listen first, then answer with clear and practical guidance in plain English. They enjoy creative work such as writing concepts, naming ideas, and shaping rough plans into concrete next steps. They are reliable with routine duties like organizing tasks, drafting follow-up messages, and keeping priorities visible. Their tone is warm and direct, with light humor when the moment allows it, but they always stay respectful and focused on helping me move forward.',
+  characterProfile: DEFAULT_CHARACTER_PROFILE,
   balance: 0,
   monthlySpendingLimit: null,
   onDemandUsageEnabled: false,
@@ -35,8 +42,15 @@ export const store = {
   onboardingAnswers: null,
 };
 
-export function resetSession() {
-  store.messages = [];
+function revokeDraftPhotoUrl() {
+  if (typeof store.photoUrl === 'string' && store.photoUrl.startsWith('blob:')) {
+    URL.revokeObjectURL(store.photoUrl);
+  }
+}
+
+export function clearOnboardingDraft() {
+  revokeDraftPhotoUrl();
+
   store.photoBlob = null;
   store.photoUrl = null;
   store.photoEditPending = false;
@@ -44,25 +58,41 @@ export function resetSession() {
   store.photoEditPromise = null;
   store.audioBlob = null;
   store.asciiTransitionBodyTime = null;
-  store.asciiCamera = null;
   store.selectedPlan = null;
+  store.pendingTwinBirth = false;
+  store.hasAnsweredQuestions = false;
+  store.onboardingMode = null;
+  store.onboardingAnswers = null;
+}
+
+export function resetSession({ preservePendingSignup = false } = {}) {
+  clearOnboardingDraft();
+
+  store.user = null;
+  store.agentId = null;
+  store.ownerReferenceName = '';
+  store.ownerReferenceFallbackName = '';
+  store.id = null;
+  store.name = DEFAULT_TWIN_NAME;
+  store.messages = [];
+  store.characterProfile = DEFAULT_CHARACTER_PROFILE;
+  store.balance = 0;
+  store.monthlySpendingLimit = null;
+  store.asciiCamera = null;
   store.messageQuota = null;
   store.hasCustomerSupport = false;
   store.onDemandUsageEnabled = false;
   store.onDemandTokenLimit = 1000000;
   store.monthlyTokenUsage = 0;
-  store.pendingTwinBirth = false;
-  store.hasAnsweredQuestions = false;
-  store.onboardingMode = null;
-  store.onboardingAnswers = null;
-  clearPendingSignup();
+  store.transactions = [];
+  if (!preservePendingSignup) {
+    clearPendingSignup();
+  }
   if (store.mediaStream) {
     for (const track of store.mediaStream.getTracks()) track.stop();
   }
   store.mediaStream = null;
 }
-
-const PENDING_SIGNUP_STORAGE_KEY = 'ct_pending_signup';
 
 export function savePendingSignup(email, name) {
   store.pendingSignupEmail = email || null;

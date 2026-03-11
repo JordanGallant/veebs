@@ -3,7 +3,7 @@
  */
 
 import { supabase } from './supabase.js';
-import { store } from './store.js';
+import { store, resetSession } from './store.js';
 
 const ONBOARDING_PHOTO_BUCKET = 'onboarding-photos';
 const ONBOARDING_AUDIO_BUCKET = 'onboarding-audio';
@@ -27,6 +27,12 @@ export async function getActiveSessionUser() {
 
   store.user = session.user;
   return session.user;
+}
+
+export async function getAccessToken() {
+  const { data: { session }, error } = await supabase.auth.getSession();
+  if (error) throw new Error(error.message);
+  return session?.access_token || null;
 }
 
 // ── Auth ──
@@ -84,16 +90,25 @@ export async function resendSignupCode(email) {
 
 export async function logout() {
   await supabase.auth.signOut();
-  store.user = null;
-  store.agentId = null;
+  localStorage.removeItem('ct_pending_plan');
+  resetSession();
 }
 
 export async function restoreSession() {
   const sessionUser = await getActiveSessionUser();
   if (!sessionUser) {
-    store.agentId = null;
+    // Keep pending signup context so verify-email can survive a page refresh.
+    resetSession({ preservePendingSignup: true });
     return false;
   }
+  const pendingOwnerReferenceName = store.ownerReferenceName;
+  const pendingOwnerReferenceFallbackName = store.ownerReferenceFallbackName;
+
+  store.ownerReferenceName = normalizeOwnerReferenceName(pendingOwnerReferenceName);
+  store.ownerReferenceFallbackName = getOwnerReferenceFallbackName(
+    pendingOwnerReferenceFallbackName,
+    sessionUser.user_metadata?.display_name,
+  );
 
   try {
     const agents = await getMyAgents();
@@ -104,6 +119,21 @@ export async function restoreSession() {
     }
   } catch {
     // Agent will be created later during onboarding
+  }
+
+  try {
+    const profile = await getProfile();
+    const storedOwnerReferenceName = normalizeOwnerReferenceName(profile?.owner_reference_name);
+    if (storedOwnerReferenceName) {
+      store.ownerReferenceName = storedOwnerReferenceName;
+    }
+    store.ownerReferenceFallbackName = getOwnerReferenceFallbackName(
+      profile?.display_name,
+      pendingOwnerReferenceFallbackName,
+      sessionUser.user_metadata?.display_name,
+    );
+  } catch {
+    // Profile row can be created later during onboarding/settings.
   }
 
   return true;
@@ -295,6 +325,22 @@ export async function saveOnboardingProfile(fields) {
   if (error) throw new Error(error.message);
 }
 
+export async function saveOwnerReferenceName(value) {
+  const trimmedName = normalizeOwnerReferenceName(value);
+  if (!trimmedName) {
+    throw new Error('This name cannot be empty.');
+  }
+
+  await saveOnboardingProfile({
+    owner_reference_name: trimmedName,
+    updated_at: new Date().toISOString(),
+  });
+
+  store.ownerReferenceName = trimmedName;
+  store.ownerReferenceFallbackName = trimmedName;
+  return trimmedName;
+}
+
 export async function syncOnboardingData() {
   const sessionUser = await getActiveSessionUser();
   if (!sessionUser) {
@@ -307,6 +353,7 @@ export async function syncOnboardingData() {
   const twinName = store.pendingSignupName || store.name || 'My Twin';
   const profile = {
     twin_name: twinName,
+    owner_reference_name: normalizeOwnerReferenceName(store.ownerReferenceName) || null,
     onboarding_mode: store.onboardingMode,
     onboarding_answers: store.onboardingAnswers,
     onboarding_character_profile: store.characterProfile || null,
@@ -371,4 +418,18 @@ async function uploadOnboardingBlob(bucket, path, blob) {
 
   if (error) throw new Error(error.message);
   return path;
+}
+
+function normalizeOwnerReferenceName(value) {
+  if (typeof value !== 'string') return '';
+  return value.trim();
+}
+
+function getOwnerReferenceFallbackName(...values) {
+  for (const value of values) {
+    const normalized = normalizeOwnerReferenceName(value);
+    if (!normalized || normalized === 'CyberTwin User') continue;
+    return normalized;
+  }
+  return '';
 }

@@ -1,11 +1,13 @@
 const crypto = require('crypto');
 const { getSupabaseAdmin } = require('./supabase-admin.js');
+const { HttpError, requireAuthenticatedUser, getOwnedAgentOrThrow } = require('./request-auth.js');
 
 const PROFILE_IMAGE_BUCKET = 'profile-images';
 
 function sendJson(res, statusCode, payload) {
   res.statusCode = statusCode;
   res.setHeader('Content-Type', 'application/json');
+  res.setHeader('Cache-Control', 'no-store');
   res.end(JSON.stringify(payload));
 }
 
@@ -28,25 +30,51 @@ function buildSharePath(token) {
   return `/share/${encodeURIComponent(token)}`;
 }
 
-function buildPlaceholderPersonalMessage({ twinName, recipientName, sharePrompt }) {
-  const name = twinName || 'My Twin';
-  const recipient = recipientName || 'there';
-  const prompt = sharePrompt || 'I wanted to share my twin with you.';
-  return `Hey ${recipient}, I'm ${name}. ${prompt}`;
+function toStoredString(value) {
+  return normalizeString(value) || '';
 }
 
-async function getAgentRecord(supabase, agentId) {
+function buildQuickShareMessage({ twinName, ownerReferenceName }) {
+  const name = twinName || 'My Twin';
+  const ownerName = ownerReferenceName || 'my human';
+  return `Hi, I'm ${name}, ${ownerName}'s twin.`;
+}
+
+function buildPersonalShareMessage({ twinName, ownerReferenceName, recipientName, sharePrompt }) {
+  const name = twinName || 'My Twin';
+  const ownerName = ownerReferenceName || 'my human';
+  const recipient = recipientName || 'there';
+  const prompt = sharePrompt || 'I wanted to share my twin with you.';
+  return `Hi ${recipient}, I'm ${name}, ${ownerName}'s twin. ${prompt}`;
+}
+
+async function getAgentRecord(supabase, agentId, userId) {
+  return getOwnedAgentOrThrow(
+    supabase,
+    agentId,
+    userId,
+    'id, user_id, name, profile_image_url',
+  );
+}
+
+async function getOwnerReferenceName(supabase, userId) {
   const { data, error } = await supabase
-    .from('agents')
-    .select('id, name, profile_image_url')
-    .eq('id', agentId)
-    .single();
+    .from('profiles')
+    .select('owner_reference_name, display_name')
+    .eq('id', userId)
+    .maybeSingle();
 
   if (error) {
-    throw new Error(error.message || 'Could not load agent.');
+    throw new Error(error.message || 'Could not load profile.');
   }
 
-  return data;
+  const ownerReferenceName = normalizeString(data?.owner_reference_name);
+  if (ownerReferenceName) return ownerReferenceName;
+
+  const displayName = normalizeString(data?.display_name);
+  if (displayName && displayName !== 'CyberTwin User') return displayName;
+
+  return null;
 }
 
 async function createShareCard(supabase, {
@@ -57,6 +85,10 @@ async function createShareCard(supabase, {
   sharePrompt,
   personalMessage,
 }) {
+  const storedRecipientName = toStoredString(recipientName);
+  const storedSharePrompt = toStoredString(sharePrompt);
+  const storedPersonalMessage = toStoredString(personalMessage);
+
   const { data, error } = await supabase
     .from('share_cards')
     .insert({
@@ -64,9 +96,9 @@ async function createShareCard(supabase, {
       twin_name: twinName,
       profile_image_source: profileImageSource,
       share_token: crypto.randomUUID().replace(/-/g, ''),
-      recipient_name: recipientName,
-      share_prompt: sharePrompt,
-      personal_message: personalMessage,
+      recipient_name: storedRecipientName,
+      share_prompt: storedSharePrompt,
+      personal_message: storedPersonalMessage,
     })
     .select(
       'share_token, twin_name, profile_image_source, recipient_name, share_prompt, personal_message',
@@ -123,28 +155,37 @@ module.exports = async function shareCardsHandler(req, res) {
 
   try {
     if (req.method === 'POST') {
+      const { user } = await requireAuthenticatedUser(req);
       const body = parseBody(req);
       const agentId = normalizeString(body.agentId);
+      const requestedShareMode = normalizeString(body.shareMode);
+      const fallbackShareMode = normalizeString(body.recipientName) || normalizeString(body.sharePrompt)
+        ? 'personal'
+        : 'quick';
+      const shareMode = requestedShareMode || fallbackShareMode;
       if (!agentId) {
         sendJson(res, 400, { error: 'Missing agentId.' });
         return;
       }
+      if (shareMode !== 'quick' && shareMode !== 'personal') {
+        sendJson(res, 400, { error: 'Invalid shareMode.' });
+        return;
+      }
 
-      const agent = await getAgentRecord(supabase, agentId);
+      const agent = await getAgentRecord(supabase, agentId, user.id);
       const twinName = normalizeString(body.twinName) || normalizeString(agent.name) || 'Unnamed Twin';
       const profileImageSource = normalizeString(agent.profile_image_url);
-      const recipientName = normalizeString(body.recipientName);
-      const sharePrompt = normalizeString(body.sharePrompt);
-      if (!recipientName || !sharePrompt) {
+      const ownerReferenceName = await getOwnerReferenceName(supabase, user.id);
+      const recipientName = shareMode === 'personal' ? normalizeString(body.recipientName) : null;
+      const sharePrompt = shareMode === 'personal' ? normalizeString(body.sharePrompt) : null;
+      if (shareMode === 'personal' && (!recipientName || !sharePrompt)) {
         sendJson(res, 400, { error: 'Missing recipientName or sharePrompt.' });
         return;
       }
 
-      const personalMessage = buildPlaceholderPersonalMessage({
-        twinName,
-        recipientName,
-        sharePrompt,
-      });
+      const personalMessage = shareMode === 'quick'
+        ? buildQuickShareMessage({ twinName, ownerReferenceName })
+        : buildPersonalShareMessage({ twinName, ownerReferenceName, recipientName, sharePrompt });
 
       const shareCard = await createShareCard(supabase, {
         agentId,
@@ -194,7 +235,9 @@ module.exports = async function shareCardsHandler(req, res) {
     sendJson(res, 405, { error: 'Method not allowed.' });
   } catch (err) {
     const message = err.message || 'Unexpected server error.';
-    const statusCode = message === 'Shared card not found.' ? 404 : 500;
+    const statusCode = err instanceof HttpError
+      ? err.statusCode
+      : (message === 'Shared card not found.' ? 404 : 500);
     sendJson(res, statusCode, { error: message });
   }
 };

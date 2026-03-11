@@ -1,4 +1,5 @@
 import { store } from './store.js';
+import { getAccessToken } from './api.js';
 
 function blobToDataUrl(blob) {
   return new Promise((resolve, reject) => {
@@ -17,12 +18,17 @@ function dataUrlToBlob(dataUrl) {
 }
 
 async function persistExternalPortrait(imageUrl) {
+  const accessToken = await getAccessToken();
+  if (!accessToken) throw new Error('You must be signed in to store a portrait.');
+
   const res = await fetch('/api/store-profile-image', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${accessToken}`,
+    },
     body: JSON.stringify({
       imageUrl,
-      userId: store.user?.id || null,
       agentId: store.agentId || null,
     }),
   });
@@ -43,13 +49,17 @@ async function persistExternalPortrait(imageUrl) {
 
 export async function createCyborgPortraitFromSnapshot(snapshotBlob) {
   const imageDataUrl = await blobToDataUrl(snapshotBlob);
+  const accessToken = await getAccessToken();
+  if (!accessToken) throw new Error('You must be signed in to generate a portrait.');
 
   const res = await fetch('/api/fal-edit', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${accessToken}`,
+    },
     body: JSON.stringify({
       imageDataUrl,
-      userId: store.user?.id || null,
       agentId: store.agentId || null,
     }),
   });

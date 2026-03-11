@@ -38,7 +38,7 @@ function render(container) {
   const brandTitle = el('h1', { class: 'welcome-title' }, '');
   const heading = el('h1', { class: 'text-lg bold welcome-heading' }, '');
   const helpToggle = el('button', {
-    class: 'welcome-help-toggle',
+    class: 'welcome-help-toggle help-toggle',
     type: 'button',
     'aria-expanded': 'false',
     'aria-controls': 'welcome-help',
@@ -47,11 +47,11 @@ function render(container) {
 
   const subtitle = el(
     'p',
-    { class: 'secondary text-sm welcome-help-text' },
+    { class: 'secondary text-sm welcome-help-text help-text' },
     'CyberTwin needs temporary access to your camera and microphone to capture your appearance and voice. This data creates the foundation for your digital twin.',
   );
-  const infoBody = el('div', { class: 'welcome-help-body' }, subtitle);
-  const infoWrap = el('div', { class: 'welcome-help-wrap', id: 'welcome-help' }, infoBody);
+  const infoBody = el('div', { class: 'welcome-help-body help-body' }, subtitle);
+  const infoWrap = el('div', { class: 'welcome-help-wrap help-wrap', id: 'welcome-help' }, infoBody);
   const headingRow = el('div', { class: 'welcome-heading-row' }, heading, helpToggle);
 
   const errorBox = el('p', { class: 'error', style: 'display:none' });
@@ -115,11 +115,11 @@ function render(container) {
   const panel = el('div', { class: 'overlay-panel overlay-panel--compact overlay-shell welcome-panel' },
     headingRow, infoWrap, errorBox, actions);
   const topBar = el('div', { class: 'welcome-topbar' }, brandTitle, loginBtn);
-  const content = el('div', { class: 'welcome-content' }, topBar, panel);
+  const content = el('div', { class: 'welcome-content screen-content' }, topBar, panel);
 
   const wrapper = el(
     'div',
-    { class: 'screen welcome-screen' },
+    { class: 'screen welcome-screen screen-shell' },
     content,
   );
 

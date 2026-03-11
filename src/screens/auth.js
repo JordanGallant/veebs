@@ -1,12 +1,19 @@
 import { el, on } from '../lib/dom.js';
 import { navigate, registerScreen, getAsciiLayer } from '../lib/router.js';
-import { store, clearPendingSignup, savePendingSignup } from '../lib/store.js';
+import {
+  store,
+  clearOnboardingDraft,
+  clearPendingSignup,
+  savePendingSignup,
+  DEFAULT_TWIN_NAME,
+} from '../lib/store.js';
 import { createAsciiCamera } from '../components/ascii-camera.js';
 import { animateTypewriter } from '../lib/typewriter.js';
 import {
   register,
   login,
   loadOrCreateAgent,
+  restoreSession,
   syncOnboardingData,
   markOnboardingPaid,
 } from '../lib/api.js';
@@ -74,7 +81,7 @@ function render(container) {
   const switchBtn = el('button', { class: 'btn btn--secondary', type: 'button' }, 'Already have an account? Sign in');
   const status = el('p', { class: 'secondary text-sm pricing-status' });
   emailInput.value = store.pendingSignupEmail || '';
-  nameInput.value = store.pendingSignupName || (store.name !== 'Unnamed Twin' ? store.name : '');
+  nameInput.value = store.pendingSignupName || '';
 
   function updateMode() {
     if (isLogin) {
@@ -120,6 +127,22 @@ function render(container) {
       if (isLogin) {
         await login(email, password);
         clearPendingSignup();
+        status.textContent = 'Loading your twin...';
+        await restoreSession();
+
+        if (store.agentId) {
+          clearOnboardingDraft();
+          localStorage.removeItem('ct_pending_plan');
+          status.textContent = 'Welcome back. Redirecting...';
+          panel.classList.remove('is-visible');
+          panel.classList.add('is-exiting');
+          exitTimer = window.setTimeout(() => {
+            store.asciiTransitionBodyTime = cam ? cam.captureBodyVideoTime() : null;
+            navigate('dashboard');
+          }, 420);
+          return;
+        }
+
         status.textContent = 'Syncing your onboarding...';
         if (hasOnboardingData()) {
           await syncOnboardingData();
@@ -131,7 +154,7 @@ function render(container) {
           throw new Error('Enable email confirmation in Supabase Auth and send the signup template as a code.');
         }
 
-        const twinName = displayName || store.name || 'My Twin';
+        const twinName = displayName || store.pendingSignupName || 'My Twin';
         store.name = twinName;
         savePendingSignup(email, twinName);
         status.textContent = 'We sent an 8-digit code to your email.';
@@ -145,7 +168,8 @@ function render(container) {
       }
 
       status.textContent = 'Setting up your twin...';
-      const agentName = store.pendingSignupName || displayName || store.name || 'My Twin';
+      const existingStoreName = store.name !== DEFAULT_TWIN_NAME ? store.name : '';
+      const agentName = store.pendingSignupName || displayName || existingStoreName || 'My Twin';
       const agent = await loadOrCreateAgent(agentName, store.characterProfile);
       store.name = agent?.name || agentName;
 

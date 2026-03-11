@@ -1,7 +1,15 @@
 import { el, on, clear } from '../lib/dom.js';
 import { navigate, registerScreen } from '../lib/router.js';
-import { store, resetSession } from '../lib/store.js';
-import { logout, getProfileImage, saveAgentName, saveAgentCharacterProfile } from '../lib/api.js';
+import { store, savePendingSignup } from '../lib/store.js';
+import {
+  getActiveSessionUser,
+  isEmailVerified,
+  logout,
+  getProfileImage,
+  saveAgentName,
+  saveAgentCharacterProfile,
+  saveOwnerReferenceName,
+} from '../lib/api.js';
 import { PLAN_OPTIONS, applyPlanSelection, getPlanById } from '../lib/plans.js';
 import { createChat } from '../components/chat.js';
 import { createCharacter } from '../components/character.js';
@@ -9,7 +17,8 @@ import { createWallet } from '../components/wallet.js';
 import { createWhatsAppQR } from '../components/whatsapp-qr.js';
 import { openShareLayover } from '../components/share-layover.js';
 import { animateTypewriter } from '../lib/typewriter.js';
-import { createShareCard, buildPublicShareUrl } from '../lib/share.js';
+
+const GENERIC_DISPLAY_NAME = 'CyberTwin User';
 
 const TAB_LABELS = {
   chat: 'Chat',
@@ -40,7 +49,22 @@ export function registerDashboard() {
   });
 }
 
-function render(container) {
+async function render(container) {
+  const sessionUser = await getActiveSessionUser();
+  if (!sessionUser) {
+    navigate('auth?mode=signin');
+    return;
+  }
+
+  if (!isEmailVerified(sessionUser)) {
+    savePendingSignup(
+      sessionUser.email || store.pendingSignupEmail,
+      store.pendingSignupName || store.name || sessionUser.user_metadata?.display_name || 'My Twin',
+    );
+    navigate('verify-email');
+    return;
+  }
+
   if (profileImageUrl) {
     URL.revokeObjectURL(profileImageUrl);
     profileImageUrl = '';
@@ -182,6 +206,7 @@ function render(container) {
   on(profilePanelImage, 'click', toggleProfileExpanded);
 
   let sharing = false;
+  let closeShareDropdown = null;
 
   function renderShareState(message = '') {
     shareStatus.textContent = message;
@@ -193,6 +218,10 @@ function render(container) {
   }
 
   on(shareBtn, 'click', async () => {
+    if (sharing && closeShareDropdown) {
+      closeShareDropdown();
+      return;
+    }
     if (sharing) return;
     sharing = true;
     renderShareButton();
@@ -203,35 +232,17 @@ function render(container) {
         throw new Error('Create your twin before sharing.');
       }
 
-      const flowInput = await openShareLayover(container, { twinName });
-      if (!flowInput) {
-        renderShareState('');
-        return;
-      }
-
       renderShareButton({ busy: true });
-
-      const shareRecord = await createShareCard({
+      const { promise, close } = openShareLayover(container, {
         agentId: store.agentId,
         twinName,
-        recipientName: flowInput.recipientName,
-        sharePrompt: flowInput.sharePrompt,
+        ownerReferenceName: store.ownerReferenceName,
+        ownerReferenceFallback: getOwnerReferenceFallback(),
+        anchor: shareBtn,
       });
-      const shareUrl = buildPublicShareUrl(shareRecord.token);
-      const sharePayload = {
-        title: `${shareRecord.twinName || twinName} on CyberTwin`,
-        text: shareRecord.personalMessage || 'Shared from CyberTwin.',
-        url: shareUrl,
-      };
-
-      if (navigator.share) {
-        await navigator.share(sharePayload);
-        renderShareState('Shared.');
-        return;
-      }
-
-      const copied = await copyShareLink(shareUrl);
-      renderShareState(copied ? 'Link copied.' : shareUrl);
+      closeShareDropdown = close;
+      await promise;
+      renderShareState('');
     } catch (err) {
       if (err?.name === 'AbortError') {
         renderShareState('');
@@ -239,6 +250,7 @@ function render(container) {
       }
       renderShareState(err?.message || 'Could not create share link.');
     } finally {
+      closeShareDropdown = null;
       sharing = false;
       renderShareButton({ busy: false });
     }
@@ -353,6 +365,7 @@ function render(container) {
 function createSettings(parent, { updateDisplayedName }) {
   const wrapper = el('div', { class: 'settings-panel' });
   let settingsView = 'main';
+  let savedOwnerReferenceName = store.ownerReferenceName || '';
   let savedName = store.name || '';
   let savedCharacterProfile = store.characterProfile || '';
 
@@ -368,6 +381,86 @@ function createSettings(parent, { updateDisplayedName }) {
     }
 
     const characterSection = el('div', { class: 'settings-section' });
+    const ownerLabel = el('label', { for: 'settings-owner-reference-name', class: 'bold' }, 'How your twin calls you');
+    const ownerInput = el('input', {
+      id: 'settings-owner-reference-name',
+      class: 'input settings-name-input',
+      type: 'text',
+      value: savedOwnerReferenceName || getOwnerReferenceFallback(),
+    });
+    const ownerActions = el('div', { class: 'settings-name-actions' });
+    const ownerStatus = el('p', { class: 'secondary text-sm' });
+    let savingOwnerReferenceName = false;
+
+    function getDraftOwnerReferenceName() {
+      return ownerInput.value.trim();
+    }
+
+    function renderOwnerActions() {
+      clear(ownerActions);
+      const draftOwnerReferenceName = getDraftOwnerReferenceName();
+      const hasChanges = draftOwnerReferenceName !== savedOwnerReferenceName;
+
+      if (savingOwnerReferenceName) {
+        ownerActions.appendChild(
+          el('button', { class: 'btn btn--secondary', type: 'button', disabled: '' }, 'Saving...'),
+        );
+        return;
+      }
+
+      if (!hasChanges) return;
+
+      const saveBtn = el('button', { class: 'btn btn--secondary', type: 'button' }, 'Save');
+      on(saveBtn, 'click', async () => {
+        const nextOwnerReferenceName = getDraftOwnerReferenceName();
+        if (!nextOwnerReferenceName) {
+          ownerStatus.textContent = 'This name cannot be empty.';
+          renderOwnerActions();
+          return;
+        }
+
+        const previousSavedOwnerReferenceName = savedOwnerReferenceName;
+        const previousStoreOwnerReferenceName = store.ownerReferenceName;
+        const previousStoreOwnerReferenceFallbackName = store.ownerReferenceFallbackName;
+
+        savingOwnerReferenceName = true;
+        savedOwnerReferenceName = nextOwnerReferenceName;
+        store.ownerReferenceName = nextOwnerReferenceName;
+        store.ownerReferenceFallbackName = nextOwnerReferenceName;
+        ownerStatus.textContent = 'Saving...';
+        renderOwnerActions();
+
+        try {
+          const savedOwnerName = await saveOwnerReferenceName(nextOwnerReferenceName);
+          savedOwnerReferenceName = savedOwnerName;
+          store.ownerReferenceName = savedOwnerName;
+          store.ownerReferenceFallbackName = savedOwnerName;
+          ownerInput.value = savedOwnerName;
+          ownerStatus.textContent = 'Saved.';
+        } catch (err) {
+          savedOwnerReferenceName = previousSavedOwnerReferenceName;
+          store.ownerReferenceName = previousStoreOwnerReferenceName;
+          store.ownerReferenceFallbackName = previousStoreOwnerReferenceFallbackName;
+          ownerInput.value = previousSavedOwnerReferenceName || getOwnerReferenceFallback();
+          ownerStatus.textContent = err.message;
+        } finally {
+          savingOwnerReferenceName = false;
+          renderOwnerActions();
+        }
+      });
+      ownerActions.appendChild(saveBtn);
+    }
+
+    on(ownerInput, 'input', () => {
+      ownerStatus.textContent = '';
+      renderOwnerActions();
+    });
+
+    characterSection.appendChild(ownerLabel);
+    characterSection.appendChild(ownerInput);
+    characterSection.appendChild(ownerActions);
+    characterSection.appendChild(ownerStatus);
+    characterSection.appendChild(el('hr', { class: 'divider' }));
     const nameLabel = el('label', { for: 'settings-twin-name', class: 'bold' }, 'Twin name');
     const nameInput = el('input', {
       id: 'settings-twin-name',
@@ -519,6 +612,7 @@ function createSettings(parent, { updateDisplayedName }) {
         renderCharacterActions(value);
       },
     });
+    renderOwnerActions();
     renderNameActions();
     renderCharacterActions(savedCharacterProfile);
 
@@ -541,7 +635,6 @@ function createSettings(parent, { updateDisplayedName }) {
     const signOutBtn = el('button', { class: 'btn btn--danger', type: 'button' }, 'Sign out');
     on(signOutBtn, 'click', async () => {
       await logout();
-      resetSession();
       navigate('welcome');
     });
 
@@ -857,16 +950,6 @@ function getProfileImageSrc() {
   return `data:image/svg+xml,${encodeURIComponent(svg)}`;
 }
 
-async function copyShareLink(url) {
-  try {
-    if (navigator.clipboard?.writeText) {
-      await navigator.clipboard.writeText(url);
-      return true;
-    }
-  } catch {}
-  return false;
-}
-
 function createShareIcon() {
   const ns = 'http://www.w3.org/2000/svg';
   const svg = document.createElementNS(ns, 'svg');
@@ -884,4 +967,15 @@ function createShareIcon() {
   svg.appendChild(path);
 
   return svg;
+}
+
+function getOwnerReferenceFallback() {
+  if (store.ownerReferenceFallbackName) {
+    return store.ownerReferenceFallbackName;
+  }
+  const displayName = store.user?.user_metadata?.display_name;
+  if (typeof displayName !== 'string') return '';
+  const trimmedName = displayName.trim();
+  if (!trimmedName || trimmedName === GENERIC_DISPLAY_NAME) return '';
+  return trimmedName;
 }
