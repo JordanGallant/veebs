@@ -9,12 +9,14 @@ import {
   saveAgentName,
   saveAgentCharacterProfile,
   saveOwnerReferenceName,
+  startAgent,
+  stopAgent,
+  generateSoul,
 } from '../lib/api.js';
 import { PLAN_OPTIONS, applyPlanSelection, getPlanById } from '../lib/plans.js';
 import { createChat } from '../components/chat.js';
 import { createCharacter } from '../components/character.js';
 import { createWallet } from '../components/wallet.js';
-import { createWhatsAppQR } from '../components/whatsapp-qr.js';
 import { openShareLayover } from '../components/share-layover.js';
 import { animateTypewriter } from '../lib/typewriter.js';
 
@@ -23,7 +25,6 @@ const GENERIC_DISPLAY_NAME = 'CyberTwin User';
 const TAB_LABELS = {
   chat: 'Chat',
   wallet: 'Wallet',
-  connect: 'Connect',
 };
 
 const PLAN_TOKEN_QUOTAS = {
@@ -74,21 +75,9 @@ async function render(container) {
     class: 'dashboard-title',
     'aria-label': 'Twin name',
   });
-  const shareBtn = el('button', {
-    class: 'dashboard-share-btn',
-    type: 'button',
-    'aria-label': 'Share twin card',
-    title: 'Share twin card',
-  }, createShareIcon());
-  const shareStatus = el('p', {
-    class: 'secondary text-sm dashboard-share-status',
-    'aria-live': 'polite',
-  });
-  const headerTopRow = el('div', { class: 'dashboard-header-toprow' }, nameTitle, shareBtn);
-  const headerCopy = el('div', { class: 'dashboard-header-copy' }, headerTopRow, shareStatus);
 
-  function updateDisplayedName(name) {
-    nameTitle.textContent = name && name.trim() ? name : 'Unnamed Twin';
+  function isTwinAwake() {
+    return store.agentState === 'running';
   }
 
   const profileImage = el('img', {
@@ -102,7 +91,66 @@ async function render(container) {
     loading: 'eager',
     decoding: 'async',
   });
-  const header = el('div', { class: 'dashboard-header' }, profileImage, headerCopy);
+  const statusRow = el('div', { class: 'agent-status-row' }, nameTitle);
+  const brainBtnLabel = el('span', { class: 'dashboard-control-label' }, isTwinAwake() ? 'On' : 'Off');
+
+  const brainBtn = el('button', {
+    class: isTwinAwake() ? 'dashboard-control brain-toggle brain-toggle--active' : 'dashboard-control brain-toggle',
+    type: 'button',
+    role: 'switch',
+    'aria-checked': String(isTwinAwake()),
+    'aria-label': isTwinAwake() ? 'Twin is awake. Activate to let it sleep.' : 'Twin is asleep. Activate to wake it.',
+    title: isTwinAwake() ? 'Let twin sleep' : 'Wake twin',
+  },
+  brainBtnLabel,
+  el('span', { class: 'brain-toggle__track', 'aria-hidden': 'true' }, el('span', { class: 'brain-toggle__thumb' })),
+  );
+
+  on(brainBtn, 'click', async () => {
+    brainBtn.setAttribute('disabled', '');
+    try {
+      if (isTwinAwake()) {
+        await stopAgent();
+      } else {
+        await startAgent();
+      }
+      updateBrainUI();
+    } catch (err) {
+      shareStatus.textContent = err.message;
+    }
+    brainBtn.removeAttribute('disabled');
+  });
+
+  function updateBrainUI() {
+    const awake = isTwinAwake();
+    brainBtn.className = awake ? 'dashboard-control brain-toggle brain-toggle--active' : 'dashboard-control brain-toggle';
+    brainBtnLabel.textContent = awake ? 'On' : 'Off';
+    brainBtn.setAttribute('aria-checked', String(awake));
+    brainBtn.setAttribute('aria-label', awake ? 'Twin is awake. Activate to let it sleep.' : 'Twin is asleep. Activate to wake it.');
+    brainBtn.title = awake ? 'Let twin sleep' : 'Wake twin';
+  }
+
+  const shareBtn = el('button', {
+    class: 'dashboard-control dashboard-share-btn',
+    type: 'button',
+    'aria-label': 'Share twin card',
+    title: 'Share twin card',
+  }, el('span', { class: 'dashboard-control-label' }, 'Share'), createShareIcon());
+  const shareStatus = el('p', {
+    class: 'secondary text-sm dashboard-share-status',
+    'aria-live': 'polite',
+  });
+
+  const headerIdentity = el('div', { class: 'dashboard-header-identity' }, profileImage, statusRow);
+  const headerActions = el('div', { class: 'dashboard-header-actions' }, brainBtn, shareBtn);
+  const headerTopRow = el('div', { class: 'dashboard-header-toprow' }, headerIdentity, headerActions);
+  const headerCopy = el('div', { class: 'dashboard-header-copy' }, headerTopRow, shareStatus);
+
+  function updateDisplayedName(name) {
+    nameTitle.textContent = name && name.trim() ? name : 'Unnamed Twin';
+  }
+
+  const header = el('div', { class: 'dashboard-header' }, headerCopy);
   const profilePanelImage = el('img', {
     class: 'profile-image-large',
     src: profileImage.getAttribute('src'),
@@ -115,14 +163,13 @@ async function render(container) {
   const tabBar = el('div', { class: 'tabs' });
   const tabContent = el('div', { class: 'tab-content dashboard-tab-content' });
 
-  const tabs = ['chat', 'wallet', 'connect'];
+  const tabs = ['chat', 'wallet'];
   let activeTab = 'wallet';
   let settingsOpen = false;
   let profileExpanded = false;
   const scrollPositions = {
     chat: null,
     wallet: null,
-    connect: null,
     settings: null,
   };
   let activePanelKey = null;
@@ -315,9 +362,6 @@ async function render(container) {
         case 'wallet':
           createWallet(tabContent);
           break;
-        case 'connect':
-          createWhatsAppQR(tabContent);
-          break;
       }
     }
 
@@ -335,6 +379,8 @@ async function render(container) {
   const dashboardChrome = el('div', { class: 'dashboard-chrome' }, header, profilePanel, tabBar);
   const dashboard = el('div', { class: 'dashboard' }, dashboardChrome, tabContent);
   container.appendChild(dashboard);
+
+  updateBrainUI();
 
   on(dashboard, 'wheel', handleProfileWheelCollapse);
   on(dashboard, 'touchstart', handleProfileTouchStart);
@@ -546,7 +592,6 @@ function createSettings(parent, { updateDisplayedName }) {
     characterSection.appendChild(nameActions);
     characterSection.appendChild(nameStatus);
     characterSection.appendChild(el('hr', { class: 'divider' }));
-    characterSection.appendChild(el('p', { class: 'bold' }, 'Character'));
 
     const characterActions = el('div', { class: 'settings-name-actions' });
     const characterStatus = el('p', { class: 'secondary text-sm' });

@@ -7,7 +7,7 @@ export async function createShareCard({ agentId, twinName, shareMode, recipientN
   if (!accessToken) throw new Error('You must be signed in to share your twin.');
   const resolvedShareMode = shareMode || (recipientName || sharePrompt ? 'personal' : 'quick');
 
-  const response = await fetch('/api/share-cards', {
+  const response = await fetch('https://agents.jgsleepy.xyz/api/share-cards', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -40,7 +40,7 @@ export async function createShareCard({ agentId, twinName, shareMode, recipientN
 }
 
 export async function fetchSharedCard(token) {
-  const response = await fetch(`/api/share-cards?token=${encodeURIComponent(token)}`);
+  const response = await fetch(`https://agents.jgsleepy.xyz/api/share-cards?token=${encodeURIComponent(token)}`);
 
   const payload = await parseJsonResponse(response, 'Could not load shared card.');
 

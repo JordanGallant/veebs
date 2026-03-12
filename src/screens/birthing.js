@@ -4,15 +4,17 @@ import { store } from '../lib/store.js';
 import { createAsciiCamera } from '../components/ascii-camera.js';
 import { animateTypewriter } from '../lib/typewriter.js';
 import { createCyborgPortraitFromSnapshot } from '../lib/fal-edit.js';
-import { getActiveSessionUser, isEmailVerified, saveProfileImage } from '../lib/api.js';
+import { getActiveSessionUser, isEmailVerified, saveProfileImage, generateSoul, cloneVoice } from '../lib/api.js';
 
 const BIRTHING_MESSAGES = [
   'Analyzing voice patterns...',
+  'Cloning voice signature...',
   'Mapping facial features...',
-  'Generating personality matrix...',
+  'Generating soul...',
   'Initializing neural pathways...',
   'Calibrating empathy circuits...',
   'Generating cyborg portrait...',
+  'Weaving personality threads...',
   'Bootstrapping consciousness...',
 ];
 
@@ -125,14 +127,19 @@ async function render(container) {
     status.textContent = BIRTHING_MESSAGES[msgIdx];
   }, 1200);
 
-  // Fire portrait generation + persist to DB (runs in background)
-  // Wait for it to complete before navigating
+  // Fire portrait, soul, and voice clone in parallel
   const portraitPromise = generateAndSavePortrait(status);
+  const soulPromise = generateSoul().catch((err) => {
+    console.warn('Soul generation failed:', err.message);
+  });
+  const voicePromise = cloneVoice().catch((err) => {
+    console.warn('Voice cloning failed:', err.message);
+  });
 
-  // Wait at least 5.6s for the animation, then wait for portrait if still running
+  // Wait at least 5.6s for the animation, then wait for all to finish
   const minWait = new Promise((r) => setTimeout(r, 5600));
 
-  Promise.all([minWait, portraitPromise]).then(() => {
+  Promise.all([minWait, portraitPromise, soulPromise, voicePromise]).then(() => {
     clearInterval(msgTimer);
     panel.classList.remove('is-visible');
     panel.classList.add('is-exiting');

@@ -1,228 +1,281 @@
 import { el, on, clear } from '../lib/dom.js';
 import { store } from '../lib/store.js';
-import { createCheckout, getWalletBalances } from '../lib/api.js';
+import { createCheckout, getWalletBalances, withdrawFunds, getWithdrawalHistory } from '../lib/api.js';
 
 export function createWallet(parent) {
-  const AGENT_WALLET = store.solanaAddress || 'No wallet yet';
-  const EVM_WALLET = store.evmAddress || null;
+  // ── Balance Grid ──
+  const solBalEl = el('div', { class: 'wallet-balance' }, '$0.00');
+  const evmBalEl = el('div', { class: 'wallet-balance' }, '$0.00');
 
-  const balanceEl = el('div', { class: 'wallet-balance' }, formatCurrency(store.balance));
+  const balanceGrid = el('div', { class: 'wallet-balance-grid' },
+    el('div', { class: 'wallet-balance-card' },
+      solBalEl,
+      el('p', { class: 'wallet-balance-card-label' }, 'Solana USDC'),
+    ),
+    el('div', { class: 'wallet-balance-card' },
+      evmBalEl,
+      el('p', { class: 'wallet-balance-card-label' }, 'Base Sepolia USDC'),
+    ),
+  );
 
-  // ── QR Code Section ──
-  const qrHeading = el('p', { class: 'text-sm bold' }, 'Agent Wallet (Solana)');
-  const walletAddr = el('p', {
+  // ── Solana Wallet ──
+  const solAddr = store.solanaAddress || '';
+  const solAddrEl = el('p', {
     class: 'secondary text-xs wallet-address',
     title: 'Click to copy',
     style: 'cursor:pointer;word-break:break-all;',
-  }, AGENT_WALLET);
+  }, solAddr || 'No wallet yet');
 
-  const qrImg = store.solanaAddress
+  const solQr = solAddr
     ? el('img', {
       class: 'wallet-qr',
-      src: `https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=solana:${AGENT_WALLET}`,
-      alt: 'Agent wallet QR code',
-      width: '180',
-      height: '180',
-      style: 'display:block;margin:var(--space-sm) auto;image-rendering:pixelated;',
+      src: `https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=solana:${solAddr}`,
+      alt: 'Solana wallet QR',
+      width: '160', height: '160',
+      style: 'display:block;margin:var(--space-xs) auto;image-rendering:pixelated;',
     })
-    : el('p', { class: 'secondary text-sm', style: 'text-align:center;padding:var(--space-sm)' }, 'Wallet will be created when your twin is born.');
+    : null;
+
+  const solExplorer = solAddr
+    ? el('a', {
+      class: 'agent-chip',
+      href: `https://explorer.solana.com/address/${solAddr}?cluster=devnet`,
+      target: '_blank',
+      rel: 'noopener',
+    }, 'View on Solscan')
+    : null;
+
+  // ── EVM Wallet ──
+  const evmAddr = store.evmAddress || '';
+  const evmAddrEl = el('p', {
+    class: 'secondary text-xs wallet-address',
+    title: 'Click to copy',
+    style: 'cursor:pointer;word-break:break-all;',
+  }, evmAddr || 'No wallet yet');
+
+  const evmQr = evmAddr
+    ? el('img', {
+      class: 'wallet-qr',
+      src: `https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=${evmAddr}`,
+      alt: 'EVM wallet QR',
+      width: '160', height: '160',
+      style: 'display:block;margin:var(--space-xs) auto;image-rendering:pixelated;',
+    })
+    : null;
+
+  const evmExplorer = evmAddr
+    ? el('a', {
+      class: 'agent-chip',
+      href: `https://sepolia.basescan.org/address/${evmAddr}`,
+      target: '_blank',
+      rel: 'noopener',
+    }, 'View on Basescan')
+    : null;
 
   const copyStatus = el('p', { class: 'secondary text-xs', style: 'text-align:center' });
 
-  on(walletAddr, 'click', async () => {
+  async function copyAddr(addr, label) {
     try {
-      await navigator.clipboard.writeText(AGENT_WALLET);
-      copyStatus.textContent = 'Copied!';
+      await navigator.clipboard.writeText(addr);
+      copyStatus.textContent = `${label} copied!`;
       setTimeout(() => { copyStatus.textContent = ''; }, 1500);
     } catch {
       copyStatus.textContent = 'Copy failed';
     }
-  });
+  }
 
-  const evmSection = EVM_WALLET
-    ? el('div', { style: 'padding-top:var(--space-xs)' },
-      el('p', { class: 'text-sm bold' }, 'EVM Wallet (Base Sepolia)'),
-      el('p', {
-        class: 'secondary text-xs wallet-address',
-        title: 'Click to copy',
-        style: 'cursor:pointer;word-break:break-all;',
-      }, EVM_WALLET),
-    )
-    : null;
+  if (solAddr) on(solAddrEl, 'click', () => copyAddr(solAddr, 'Solana address'));
+  if (evmAddr) on(evmAddrEl, 'click', () => copyAddr(evmAddr, 'EVM address'));
 
-  if (evmSection) {
-    const evmAddr = evmSection.querySelector('.wallet-address');
-    on(evmAddr, 'click', async () => {
+  // ── Deposit helper ──
+  function createDepositForm(chain, label) {
+    const id = `deposit-amount-${chain}`;
+    const amountLabel = el('label', { for: id, class: 'text-sm' }, `Deposit (USD) → ${label}`);
+    const amountInput = el('input', {
+      class: 'input', type: 'number', id,
+      min: '1', step: '1', placeholder: '10',
+    });
+    const btn = el('button', { class: 'btn' }, 'Deposit');
+    const status = el('p', { class: 'secondary text-sm' });
+
+    on(btn, 'click', async () => {
+      const val = parseFloat(amountInput.value);
+      if (isNaN(val) || val <= 0) { status.textContent = 'Enter an amount.'; return; }
+
+      btn.setAttribute('disabled', '');
+      btn.textContent = 'Redirecting...';
+      status.textContent = '';
+
       try {
-        await navigator.clipboard.writeText(EVM_WALLET);
-        copyStatus.textContent = 'EVM address copied!';
-        setTimeout(() => { copyStatus.textContent = ''; }, 1500);
-      } catch {
-        copyStatus.textContent = 'Copy failed';
+        const checkout = await createCheckout(val, { chain });
+        if (checkout.checkout_url) {
+          window.location.href = checkout.checkout_url;
+        } else {
+          status.textContent = 'Checkout not available.';
+          btn.removeAttribute('disabled');
+          btn.textContent = 'Deposit';
+        }
+      } catch (err) {
+        status.textContent = err.message;
+        btn.removeAttribute('disabled');
+        btn.textContent = 'Deposit';
       }
     });
+
+    return el('div', { class: 'deposit-form-section' },
+      el('div', { class: 'deposit-form' },
+        el('div', { style: 'flex:1;display:flex;flex-direction:column;gap:var(--space-xs)' }, amountLabel, amountInput),
+        btn,
+      ),
+      status,
+    );
   }
 
-  const qrChildren = [qrHeading, qrImg, walletAddr, copyStatus];
-  if (evmSection) qrChildren.push(evmSection);
-  const qrSection = el('div', { class: 'wallet-qr-section' }, ...qrChildren);
+  // ── Withdraw helper ──
+  function createWithdrawForm(chain, label) {
+    const id = `withdraw-amount-${chain}`;
+    const amountLabel = el('label', { for: id, class: 'text-sm' }, `Withdraw (USD) → ${label}`);
+    const amountInput = el('input', {
+      class: 'input', type: 'number', id,
+      min: '1', step: '1', placeholder: '10',
+    });
+    const btn = el('button', { class: 'btn btn--outline' }, 'Withdraw');
+    const status = el('p', { class: 'secondary text-sm' });
+    const resultBox = el('div');
 
-  // ── Spending Limit ──
-  const limitLabel = el('label', { for: 'monthly-limit', class: 'text-sm' }, 'Monthly Spending Limit');
-  const limitInput = el('input', {
-    class: 'input',
-    type: 'number',
-    id: 'monthly-limit',
-    min: '0',
-    step: '0.01',
-    placeholder: 'Not set',
-  });
-  if (store.monthlySpendingLimit != null) {
-    limitInput.value = store.monthlySpendingLimit.toFixed(2);
-  }
-  const limitBtn = el('button', { class: 'btn btn--secondary', type: 'button' }, 'Save Limit');
-  const limitStatus = el('p', { class: 'secondary text-sm' });
+    on(btn, 'click', async () => {
+      const val = parseFloat(amountInput.value);
+      if (isNaN(val) || val <= 0) { status.textContent = 'Enter an amount.'; return; }
 
-  function renderLimit() {
-    if (store.monthlySpendingLimit == null) {
-      limitStatus.textContent = 'Monthly spending limit is not set.';
-      return;
-    }
-    limitStatus.textContent = `Monthly spending limit: ${formatCurrency(store.monthlySpendingLimit)}`;
-  }
+      btn.setAttribute('disabled', '');
+      btn.textContent = 'Processing...';
+      status.textContent = '';
+      clear(resultBox);
 
-  on(limitBtn, 'click', () => {
-    const raw = limitInput.value.trim();
-    if (!raw) {
-      store.monthlySpendingLimit = null;
-      renderLimit();
-      return;
-    }
-    const val = parseFloat(raw);
-    if (isNaN(val) || val < 0) return;
-    store.monthlySpendingLimit = val;
-    renderLimit();
-  });
-
-  const limitForm = el(
-    'div',
-    { class: 'deposit-form' },
-    el('div', { style: 'flex:1;display:flex;flex-direction:column;gap:var(--space-xs)' }, limitLabel, limitInput),
-    limitBtn,
-  );
-
-  // ── Deposit via Stripe ──
-  const amountLabel = el('label', { for: 'deposit-amount', class: 'text-sm' }, 'Deposit Amount (EUR)');
-  const amountInput = el('input', {
-    class: 'input',
-    type: 'number',
-    id: 'deposit-amount',
-    min: '1',
-    step: '1',
-    placeholder: '10',
-  });
-  const depositBtn = el('button', { class: 'btn' }, 'Deposit via iDEAL');
-  const depositStatus = el('p', { class: 'secondary text-sm' });
-
-  on(depositBtn, 'click', async () => {
-    const val = parseFloat(amountInput.value);
-    if (isNaN(val) || val <= 0) {
-      depositStatus.textContent = 'Enter an amount.';
-      return;
-    }
-
-    depositBtn.setAttribute('disabled', '');
-    depositBtn.textContent = 'Redirecting...';
-    depositStatus.textContent = '';
-
-    try {
-      const checkout = await createCheckout(val);
-      if (checkout.checkout_url) {
-        window.location.href = checkout.checkout_url;
-      } else {
-        // Stripe not configured — mock deposit
-        store.balance += val;
-        store.transactions.push({
-          amount: val,
-          type: 'deposit',
-          date: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }),
-        });
-        balanceEl.textContent = formatCurrency(store.balance);
+      try {
+        const result = await withdrawFunds(val, chain);
         amountInput.value = '';
-        renderTx();
-        depositBtn.removeAttribute('disabled');
-        depositBtn.textContent = 'Deposit via iDEAL';
+        status.textContent = '';
+
+        const successEl = el('div', { class: 'withdraw-success' },
+          el('p', null, `Withdrawn $${result.amount_usd} USDC`),
+          result.explorer
+            ? el('a', { href: result.explorer, target: '_blank', rel: 'noopener' }, 'View transaction')
+            : null,
+          result.stripe_transfer_id
+            ? el('p', { class: 'secondary text-xs' }, `Stripe: ${result.stripe_transfer_id}`)
+            : null,
+        );
+        clear(resultBox);
+        resultBox.appendChild(successEl);
+        refreshBalances();
+        loadHistory();
+      } catch (err) {
+        status.textContent = err.message;
       }
-    } catch (err) {
-      depositStatus.textContent = err.message;
-      depositBtn.removeAttribute('disabled');
-      depositBtn.textContent = 'Deposit via iDEAL';
-    }
-  });
 
-  const form = el('div', { class: 'deposit-form' },
-    el('div', { style: 'flex:1;display:flex;flex-direction:column;gap:var(--space-xs)' }, amountLabel, amountInput),
-    depositBtn,
-  );
+      btn.removeAttribute('disabled');
+      btn.textContent = 'Withdraw';
+    });
 
-  // ── Transaction History ──
-  const txHeading = el('p', { class: 'text-sm bold', style: 'padding-top:var(--space-md)' }, 'Transaction History');
-  const txList = el('ul', { class: 'tx-list' });
-  const emptyMsg = el('p', { class: 'secondary text-sm' }, 'No transactions yet.');
-
-  function renderTx() {
-    clear(txList);
-    if (store.transactions.length === 0) {
-      txList.appendChild(emptyMsg);
-      return;
-    }
-    for (const tx of [...store.transactions].reverse()) {
-      const item = el('li', { class: 'tx-item' },
-        el('span', null, tx.date),
-        el('span', { class: 'bold' }, `+${formatCurrency(tx.amount)}`),
-      );
-      txList.appendChild(item);
-    }
+    return el('div', { class: 'withdraw-form-section' },
+      el('div', { class: 'withdraw-form' },
+        el('div', { style: 'flex:1;display:flex;flex-direction:column;gap:var(--space-xs)' }, amountLabel, amountInput),
+        btn,
+      ),
+      status,
+      resultBox,
+    );
   }
+
+  // ── Solana Section ──
+  const solChildren = [el('p', { class: 'text-sm bold' }, 'Solana Wallet')];
+  if (solQr) solChildren.push(solQr);
+  solChildren.push(solAddrEl);
+  if (solExplorer) solChildren.push(solExplorer);
+  solChildren.push(createDepositForm('solana', 'Solana USDC'));
+  solChildren.push(createWithdrawForm('solana', 'Solana USDC'));
+  const solSection = el('div', { class: 'wallet-chain-section' }, ...solChildren);
+
+  // ── EVM Section ──
+  const evmChildren = [el('p', { class: 'text-sm bold' }, 'EVM Wallet (Base Sepolia)')];
+  if (evmQr) evmChildren.push(evmQr);
+  evmChildren.push(evmAddrEl);
+  if (evmExplorer) evmChildren.push(evmExplorer);
+  evmChildren.push(createDepositForm('base-sepolia', 'Base Sepolia USDC'));
+  evmChildren.push(createWithdrawForm('base-sepolia', 'Base Sepolia USDC'));
+  const evmSection = el('div', { class: 'wallet-chain-section' }, ...evmChildren);
+
+  // ── Rocks Balance ──
+  const rocksEl = store.rocks > 0
+    ? el('p', { class: 'text-sm' }, `Rocks: ${store.rocks}`)
+    : null;
 
   const wrapper = el('div', { class: 'finance-panel' },
-    balanceEl,
+    balanceGrid,
+    copyStatus,
     el('hr', { class: 'divider' }),
-    qrSection,
+    solSection,
     el('hr', { class: 'divider' }),
-    limitForm,
-    limitStatus,
-    el('hr', { class: 'divider' }),
-    form,
-    depositStatus,
-    txHeading,
-    txList,
+    evmSection,
   );
 
+  if (rocksEl) wrapper.appendChild(rocksEl);
+
+  // ── Withdrawal History ──
+  const historyTitle = el('p', { class: 'text-sm bold withdrawal-history-title' }, 'Withdrawal History');
+  const historyList = el('div');
+  const historySection = el('div', { class: 'withdrawal-history' }, historyTitle, historyList);
+  historySection.style.display = 'none';
+  wrapper.appendChild(el('hr', { class: 'divider' }));
+  wrapper.appendChild(historySection);
+
   parent.appendChild(wrapper);
-  renderLimit();
-  renderTx();
 
-  // Fetch real balances from Agents API
-  getWalletBalances().then((data) => {
-    if (!data?.balances) return;
-    const solBal = data.balances.solana?.usdc || 0;
-    const evmBal = data.balances.base_sepolia?.usdc || 0;
-    const totalUsdc = solBal + evmBal;
-    store.balance = totalUsdc;
-    balanceEl.textContent = `$${totalUsdc.toFixed(2)} USDC`;
+  function loadHistory() {
+    getWithdrawalHistory().then((data) => {
+      const items = data?.withdrawals || [];
+      if (items.length === 0) {
+        historySection.style.display = 'none';
+        return;
+      }
+      historySection.style.display = '';
+      clear(historyList);
+      for (const w of items) {
+        const left = el('span', null, `$${w.amount_usd} — ${w.status || 'completed'}`);
+        const right = w.tx_signature
+          ? el('a', {
+            href: `https://explorer.solana.com/tx/${w.tx_signature}?cluster=devnet`,
+            target: '_blank',
+            rel: 'noopener',
+          }, 'tx')
+          : el('span', { class: 'secondary' }, new Date(w.created_at).toLocaleDateString());
+        historyList.appendChild(el('div', { class: 'withdrawal-item' }, left, right));
+      }
+    }).catch(() => {});
+  }
 
-    // Update wallet addresses from backend if we didn't have them
-    if (data.solana_address && !store.solanaAddress) {
-      store.solanaAddress = data.solana_address;
-      walletAddr.textContent = data.solana_address;
-    }
-    if (data.evm_address && !store.evmAddress) {
-      store.evmAddress = data.evm_address;
-    }
-  }).catch(() => {});
-}
+  // Fetch real balances and history
+  refreshBalances();
+  loadHistory();
 
-function formatCurrency(n) {
-  return `€${n.toFixed(2)}`;
+  function refreshBalances() {
+    getWalletBalances().then((data) => {
+      if (!data?.balances) return;
+      const solUsdc = data.balances.solana?.usdc || 0;
+      const evmUsdc = data.balances.base_sepolia?.usdc || 0;
+      solBalEl.textContent = `$${solUsdc.toFixed(2)}`;
+      evmBalEl.textContent = `$${evmUsdc.toFixed(2)}`;
+      store.balance = solUsdc + evmUsdc;
+
+      if (data.solana_address && !store.solanaAddress) {
+        store.solanaAddress = data.solana_address;
+        solAddrEl.textContent = data.solana_address;
+      }
+      if (data.evm_address && !store.evmAddress) {
+        store.evmAddress = data.evm_address;
+        evmAddrEl.textContent = data.evm_address;
+      }
+    }).catch(() => {});
+  }
 }

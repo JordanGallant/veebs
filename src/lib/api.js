@@ -133,6 +133,11 @@ export async function restoreSession() {
       if (agents[0].solana_address) store.solanaAddress = agents[0].solana_address;
       if (agents[0].evm_address) store.evmAddress = agents[0].evm_address;
       if (agents[0].local_agent_id) store.localAgentId = agents[0].local_agent_id;
+      if (agents[0].agent_state) store.agentState = agents[0].agent_state;
+      if (agents[0].erc8004_agent_id) store.erc8004AgentId = agents[0].erc8004_agent_id;
+      if (agents[0].sati_agent_id) store.satiAgentId = agents[0].sati_agent_id;
+      if (agents[0].rocks != null) store.rocks = agents[0].rocks;
+      if (agents[0].last_active) store.lastActive = agents[0].last_active;
     }
   } catch {
     // Agent will be created later during onboarding
@@ -230,6 +235,18 @@ export async function loadOrCreateAgent(name, characterProfile) {
   return createAgent(name, 'CyberTwin agent', characterProfile || '');
 }
 
+export async function isAgentNameTaken(name, excludeAgentId) {
+  const { data, error } = await supabase
+    .from('agents')
+    .select('id')
+    .ilike('name', name)
+    .limit(1);
+  if (error) throw new Error(error.message);
+  if (!data || data.length === 0) return false;
+  // If the only match is our own agent, it's fine
+  return excludeAgentId ? data[0].id !== excludeAgentId : true;
+}
+
 export async function saveAgentName(name) {
   const trimmedName = name.trim();
   if (!trimmedName) {
@@ -240,6 +257,12 @@ export async function saveAgentName(name) {
   if (!agentId) {
     const agent = await loadOrCreateAgent(trimmedName, store.characterProfile);
     agentId = agent.id;
+  }
+
+  // Check uniqueness
+  const taken = await isAgentNameTaken(trimmedName, agentId);
+  if (taken) {
+    throw new Error('That name is already taken. Choose a unique name.');
   }
 
   const { data, error } = await supabase
@@ -433,28 +456,16 @@ export async function markOnboardingPaid(planId) {
 
 // ── Checkout, Deposits & Balances ──
 
-export async function createCheckout(amountUsd, { embedded = false } = {}) {
+export async function createCheckout(amountUsd, { chain = 'solana', embedded = false } = {}) {
   if (!store.agentId) return {};
   return agentsApiFetch('/api/agents/supabase-checkout', {
     method: 'POST',
     body: JSON.stringify({
       supabase_agent_id: store.agentId,
       amount_usd: amountUsd,
-      chain: 'solana',
+      chain,
       return_url: window.location.origin,
       embedded,
-    }),
-  });
-}
-
-export async function createDeposit(amountUsd, chain = 'solana') {
-  if (!store.agentId) return {};
-  return agentsApiFetch('/api/agents/supabase-deposit', {
-    method: 'POST',
-    body: JSON.stringify({
-      supabase_agent_id: store.agentId,
-      amount_usd: amountUsd,
-      chain,
     }),
   });
 }
@@ -464,6 +475,203 @@ export async function getWalletBalances() {
   return agentsApiFetch(
     `/api/agents/supabase-deposit?supabase_agent_id=${encodeURIComponent(store.agentId)}`,
   );
+}
+
+// ── Withdrawals ──
+
+export async function withdrawFunds(amountUsd, chain = 'solana') {
+  if (!store.agentId) throw new Error('No agent');
+  return agentsApiFetch('/api/agents/supabase-withdraw', {
+    method: 'POST',
+    body: JSON.stringify({
+      supabase_agent_id: store.agentId,
+      amount_usd: String(amountUsd),
+      chain,
+    }),
+  });
+}
+
+export async function getWithdrawalHistory() {
+  if (!store.agentId) return { withdrawals: [] };
+  return agentsApiFetch(
+    `/api/agents/supabase-withdraw?supabase_agent_id=${encodeURIComponent(store.agentId)}`,
+  );
+}
+
+// ── Domains ──
+
+export async function searchDomains(keyword) {
+  if (!store.agentId) throw new Error('No agent');
+  return agentsApiFetch(
+    `/api/agents/supabase-domains?supabase_agent_id=${encodeURIComponent(store.agentId)}&action=search&keyword=${encodeURIComponent(keyword)}`,
+  );
+}
+
+export async function registerDomain(domain) {
+  if (!store.agentId) throw new Error('No agent');
+  return agentsApiFetch('/api/agents/supabase-domains', {
+    method: 'POST',
+    body: JSON.stringify({
+      supabase_agent_id: store.agentId,
+      action: 'register',
+      domain,
+    }),
+  });
+}
+
+export async function getDnsRecords(domain) {
+  if (!store.agentId) throw new Error('No agent');
+  return agentsApiFetch(
+    `/api/agents/supabase-domains?supabase_agent_id=${encodeURIComponent(store.agentId)}&action=dns&domain=${encodeURIComponent(domain)}`,
+  );
+}
+
+export async function addDnsRecord(domain, recordType, content, name, ttl = 600) {
+  if (!store.agentId) throw new Error('No agent');
+  return agentsApiFetch('/api/agents/supabase-domains', {
+    method: 'POST',
+    body: JSON.stringify({
+      supabase_agent_id: store.agentId,
+      action: 'add_dns',
+      domain,
+      record_type: recordType,
+      content,
+      name,
+      ttl,
+    }),
+  });
+}
+
+export async function deleteDnsRecord(domain, recordId) {
+  if (!store.agentId) throw new Error('No agent');
+  return agentsApiFetch('/api/agents/supabase-domains', {
+    method: 'POST',
+    body: JSON.stringify({
+      supabase_agent_id: store.agentId,
+      action: 'delete_dns',
+      domain,
+      record_id: recordId,
+    }),
+  });
+}
+
+// ── Soul Generation ──
+
+export async function generateSoul() {
+  if (!store.agentId) throw new Error('No agent');
+  const data = await agentsApiFetch('/api/agents/generate-soul', {
+    method: 'POST',
+    body: JSON.stringify({ supabase_agent_id: store.agentId }),
+  });
+  // Backend saves personality to Supabase — update local store
+  if (data.personality) {
+    store.characterProfile = data.personality;
+  }
+  return data;
+}
+
+// ── Voice Clone & TTS ──
+
+export async function cloneVoice() {
+  if (!store.agentId) throw new Error('No agent');
+  return agentsApiFetch('/api/agents/clone-voice', {
+    method: 'POST',
+    body: JSON.stringify({ supabase_agent_id: store.agentId }),
+  });
+}
+
+export async function speakText(text) {
+  if (!store.agentId) throw new Error('No agent');
+  const data = await agentsApiFetch('/api/agents/speak', {
+    method: 'POST',
+    body: JSON.stringify({
+      supabase_agent_id: store.agentId,
+      text,
+    }),
+  });
+  return data;
+}
+
+// ── Brain Control ──
+
+export async function startAgent() {
+  if (!store.agentId) throw new Error('No agent');
+  const data = await agentsApiFetch('/api/agents/supabase-start', {
+    method: 'POST',
+    body: JSON.stringify({ supabase_agent_id: store.agentId }),
+  });
+  store.agentState = data.state || 'running';
+  return data;
+}
+
+export async function stopAgent() {
+  if (!store.agentId) throw new Error('No agent');
+  const data = await agentsApiFetch('/api/agents/supabase-stop', {
+    method: 'POST',
+    body: JSON.stringify({ supabase_agent_id: store.agentId }),
+  });
+  store.agentState = data.state || 'sleeping';
+  return data;
+}
+
+// ── Discovery ──
+
+export async function getAgentById(agentId) {
+  const { data, error } = await supabase
+    .from('agents')
+    .select('id, name, description, personality, profile_image_url, solana_address, evm_address, agent_state, rocks, last_active, erc8004_agent_id, sati_agent_id')
+    .eq('id', agentId)
+    .single();
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+export async function searchAgents(query) {
+  const { data, error } = await supabase
+    .from('agents')
+    .select('id, name, description, personality, profile_image_url, solana_address, evm_address, agent_state, rocks, last_active, erc8004_agent_id, sati_agent_id')
+    .ilike('name', `%${query}%`)
+    .order('last_active', { ascending: false, nullsFirst: false })
+    .limit(20);
+  if (error) throw new Error(error.message);
+  return data || [];
+}
+
+export async function getAllAgents() {
+  const { data, error } = await supabase
+    .from('agents')
+    .select('id, name, description, personality, profile_image_url, solana_address, evm_address, agent_state, rocks, last_active, erc8004_agent_id, sati_agent_id')
+    .order('last_active', { ascending: false, nullsFirst: false });
+  if (error) throw new Error(error.message);
+  return data || [];
+}
+
+export async function getRegistry() {
+  return agentsApiFetch('/api/registry');
+}
+
+export async function getActivity() {
+  return agentsApiFetch('/api/activity');
+}
+
+export async function getAgentMessages() {
+  return agentsApiFetch('/api/messages');
+}
+
+// ── Tools & Marketplace ──
+
+export async function getTools() {
+  const data = await agentsApiFetch('/api/tools');
+  store.agentTools = Array.isArray(data) ? data : [];
+  return store.agentTools;
+}
+
+export async function getListings() {
+  return agentsApiFetch('/api/listings');
+}
+
+export async function getTrades() {
+  return agentsApiFetch('/api/trades');
 }
 
 function buildOnboardingStoragePath(kind, mimeType) {
