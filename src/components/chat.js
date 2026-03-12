@@ -1,6 +1,12 @@
 import { el, on, clear } from '../lib/dom.js';
 import { store } from '../lib/store.js';
 import { sendMessage, getChatHistory, speakText } from '../lib/api.js';
+import { marked } from 'marked';
+
+marked.setOptions({
+  breaks: true,
+  gfm: true,
+});
 
 let currentAudio = null;
 
@@ -27,7 +33,17 @@ export function createChat(parent, options = {}) {
     const cls = role === 'user' ? 'chat-msg chat-msg--user' : 'chat-msg chat-msg--twin';
     const msgEl = el('div', { class: cls });
 
-    const textEl = el('span', null, content);
+    const textEl = document.createElement(role === 'user' ? 'span' : 'div');
+    if (role === 'user') {
+      textEl.appendChild(document.createTextNode(content));
+    } else {
+      textEl.className = 'chat-markdown';
+      textEl.innerHTML = marked.parse(content || '');
+      textEl.querySelectorAll('a').forEach((a) => {
+        a.setAttribute('target', '_blank');
+        a.setAttribute('rel', 'noopener noreferrer');
+      });
+    }
     msgEl.appendChild(textEl);
 
     // Speak button for agent messages
