@@ -20,6 +20,7 @@ import { createCharacter } from '../components/character.js';
 import { createWallet } from '../components/wallet.js';
 import { createDiscover } from '../components/discover.js';
 import { createGlobalFeed } from '../components/global-feed.js';
+import { createDomains } from '../components/domains.js';
 import { openShareLayover } from '../components/share-layover.js';
 import { animateTypewriter } from '../lib/typewriter.js';
 
@@ -29,6 +30,7 @@ const TAB_LABELS = {
   chat: 'Chat',
   wallet: 'Wallet',
   discover: 'Discover',
+  domains: 'Domains',
   global: 'Global',
 };
 
@@ -208,7 +210,7 @@ async function render(container) {
   const tabBar = el('div', { class: 'tabs' });
   const tabContent = el('div', { class: 'tab-content dashboard-tab-content' });
 
-  const tabs = ['chat', 'wallet', 'discover', 'global'];
+  const tabs = ['chat', 'wallet', 'discover', 'domains', 'global'];
   let activeTab = 'wallet';
   let settingsOpen = false;
   let profileExpanded = false;
@@ -411,6 +413,9 @@ async function render(container) {
           break;
         case 'discover':
           createDiscover(tabContent);
+          break;
+        case 'domains':
+          createDomains(tabContent);
           break;
         case 'global':
           createGlobalFeed(tabContent);

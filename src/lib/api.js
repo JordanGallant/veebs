@@ -498,6 +498,63 @@ export async function getWithdrawalHistory() {
   );
 }
 
+// ── Domains ──
+
+export async function searchDomains(keyword) {
+  if (!store.agentId) throw new Error('No agent');
+  return agentsApiFetch(
+    `/api/agents/supabase-domains?supabase_agent_id=${encodeURIComponent(store.agentId)}&action=search&keyword=${encodeURIComponent(keyword)}`,
+  );
+}
+
+export async function registerDomain(domain) {
+  if (!store.agentId) throw new Error('No agent');
+  return agentsApiFetch('/api/agents/supabase-domains', {
+    method: 'POST',
+    body: JSON.stringify({
+      supabase_agent_id: store.agentId,
+      action: 'register',
+      domain,
+    }),
+  });
+}
+
+export async function getDnsRecords(domain) {
+  if (!store.agentId) throw new Error('No agent');
+  return agentsApiFetch(
+    `/api/agents/supabase-domains?supabase_agent_id=${encodeURIComponent(store.agentId)}&action=dns&domain=${encodeURIComponent(domain)}`,
+  );
+}
+
+export async function addDnsRecord(domain, recordType, content, name, ttl = 600) {
+  if (!store.agentId) throw new Error('No agent');
+  return agentsApiFetch('/api/agents/supabase-domains', {
+    method: 'POST',
+    body: JSON.stringify({
+      supabase_agent_id: store.agentId,
+      action: 'add_dns',
+      domain,
+      record_type: recordType,
+      content,
+      name,
+      ttl,
+    }),
+  });
+}
+
+export async function deleteDnsRecord(domain, recordId) {
+  if (!store.agentId) throw new Error('No agent');
+  return agentsApiFetch('/api/agents/supabase-domains', {
+    method: 'POST',
+    body: JSON.stringify({
+      supabase_agent_id: store.agentId,
+      action: 'delete_dns',
+      domain,
+      record_id: recordId,
+    }),
+  });
+}
+
 // ── Soul Generation ──
 
 export async function generateSoul() {
