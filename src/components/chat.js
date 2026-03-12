@@ -4,6 +4,15 @@ import { sendMessage, getChatHistory, speakText } from '../lib/api.js';
 
 let currentAudio = null;
 
+function getSleepingReplyName() {
+  const preferredName = store.ownerReferenceName
+    || store.ownerReferenceFallbackName
+    || store.user?.user_metadata?.display_name
+    || store.name;
+  const trimmedName = typeof preferredName === 'string' ? preferredName.trim() : '';
+  return trimmedName || 'friend';
+}
+
 export function createChat(parent, options = {}) {
   const { initialScrollTop } = options;
   const hasInitialScroll = Number.isFinite(initialScrollTop);
@@ -127,6 +136,15 @@ export function createChat(parent, options = {}) {
     store.messages.push({ role: 'user', content: text });
     appendMessage('user', text);
     input.value = '';
+
+    if (store.agentState !== 'running') {
+      const reply = `zzz, ${getSleepingReplyName()}... quiet, i'm sleeping so i don't burn any credits. If you want to chat, you can toggle me on in the top right.`;
+      store.messages.push({ role: 'twin', content: reply });
+      appendMessage('twin', reply);
+      input.focus();
+      return;
+    }
+
     sendBtn.setAttribute('disabled', '');
     input.setAttribute('disabled', '');
 

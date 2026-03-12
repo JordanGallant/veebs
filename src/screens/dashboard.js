@@ -11,16 +11,12 @@ import {
   saveOwnerReferenceName,
   startAgent,
   stopAgent,
-  getTools,
   generateSoul,
 } from '../lib/api.js';
 import { PLAN_OPTIONS, applyPlanSelection, getPlanById } from '../lib/plans.js';
 import { createChat } from '../components/chat.js';
 import { createCharacter } from '../components/character.js';
 import { createWallet } from '../components/wallet.js';
-import { createDiscover } from '../components/discover.js';
-import { createGlobalFeed } from '../components/global-feed.js';
-import { createDomains } from '../components/domains.js';
 import { openShareLayover } from '../components/share-layover.js';
 import { animateTypewriter } from '../lib/typewriter.js';
 
@@ -29,9 +25,6 @@ const GENERIC_DISPLAY_NAME = 'CyberTwin User';
 const TAB_LABELS = {
   chat: 'Chat',
   wallet: 'Wallet',
-  discover: 'Discover',
-  domains: 'Domains',
-  global: 'Global',
 };
 
 const PLAN_TOKEN_QUOTAS = {
@@ -83,107 +76,8 @@ async function render(container) {
     'aria-label': 'Twin name',
   });
 
-  // Status dot
-  const statusDot = el('span', { class: `agent-status-dot agent-status-dot--${store.agentState}` });
-  const statusLabel = el('span', { class: 'agent-status-label' }, store.agentState);
-  const statusRow = el('div', { class: 'agent-status-row' }, statusDot, nameTitle, statusLabel);
-
-  // Brain toggle
-  const brainBtn = el('button', {
-    class: store.agentState === 'running' ? 'brain-toggle brain-toggle--active' : 'brain-toggle',
-    type: 'button',
-    title: store.agentState === 'running' ? 'Stop brain' : 'Start brain',
-  }, store.agentState === 'running' ? 'Stop' : 'Start');
-
-  on(brainBtn, 'click', async () => {
-    brainBtn.setAttribute('disabled', '');
-    brainBtn.textContent = '...';
-    try {
-      if (store.agentState === 'running') {
-        await stopAgent();
-      } else {
-        await startAgent();
-      }
-      updateBrainUI();
-    } catch (err) {
-      shareStatus.textContent = err.message;
-    }
-    brainBtn.removeAttribute('disabled');
-  });
-
-  function updateBrainUI() {
-    statusDot.className = `agent-status-dot agent-status-dot--${store.agentState}`;
-    statusLabel.textContent = store.agentState;
-    brainBtn.className = store.agentState === 'running' ? 'brain-toggle brain-toggle--active' : 'brain-toggle';
-    brainBtn.textContent = store.agentState === 'running' ? 'Stop' : 'Start';
-    brainBtn.title = store.agentState === 'running' ? 'Stop brain' : 'Start brain';
-  }
-
-  const shareBtn = el('button', {
-    class: 'dashboard-share-btn',
-    type: 'button',
-    'aria-label': 'Share twin card',
-    title: 'Share twin card',
-  }, createShareIcon());
-  const shareStatus = el('p', {
-    class: 'secondary text-sm dashboard-share-status',
-    'aria-live': 'polite',
-  });
-
-  // Username chip (copyable)
-  const username = store.name && store.name.trim() ? store.name.trim() : null;
-  const usernameChip = username
-    ? el('span', {
-      class: 'agent-chip agent-chip--copyable',
-      title: 'Click to copy username',
-    }, `@${username}`)
-    : null;
-
-  const chipCopyStatus = el('span', { class: 'agent-chip-copy-status secondary text-xs' });
-
-  if (usernameChip) {
-    on(usernameChip, 'click', async () => {
-      try {
-        await navigator.clipboard.writeText(username);
-        chipCopyStatus.textContent = 'Copied!';
-        setTimeout(() => { chipCopyStatus.textContent = ''; }, 1500);
-      } catch {
-        chipCopyStatus.textContent = 'Copy failed';
-      }
-    });
-  }
-
-  // On-chain identity chips
-  const chips = el('div', { class: 'agent-chips' });
-  if (usernameChip) chips.append(usernameChip, chipCopyStatus);
-  if (store.solanaAddress) {
-    const short = store.solanaAddress.slice(0, 6) + '...' + store.solanaAddress.slice(-4);
-    chips.appendChild(el('a', {
-      class: 'agent-chip',
-      href: `https://explorer.solana.com/address/${store.solanaAddress}?cluster=devnet`,
-      target: '_blank', rel: 'noopener',
-    }, `SOL ${short}`));
-  }
-  if (store.evmAddress) {
-    const short = store.evmAddress.slice(0, 6) + '...' + store.evmAddress.slice(-4);
-    chips.appendChild(el('a', {
-      class: 'agent-chip',
-      href: `https://sepolia.basescan.org/address/${store.evmAddress}`,
-      target: '_blank', rel: 'noopener',
-    }, `EVM ${short}`));
-  }
-  if (store.erc8004AgentId) {
-    chips.appendChild(el('span', { class: 'agent-chip' }, `ERC-8004 #${store.erc8004AgentId}`));
-  }
-  if (store.satiAgentId) {
-    chips.appendChild(el('span', { class: 'agent-chip' }, 'SATI'));
-  }
-
-  const headerTopRow = el('div', { class: 'dashboard-header-toprow' }, statusRow, brainBtn, shareBtn);
-  const headerCopy = el('div', { class: 'dashboard-header-copy' }, headerTopRow, chips, shareStatus);
-
-  function updateDisplayedName(name) {
-    nameTitle.textContent = name && name.trim() ? name : 'Unnamed Twin';
+  function isTwinAwake() {
+    return store.agentState === 'running';
   }
 
   const profileImage = el('img', {
@@ -197,7 +91,66 @@ async function render(container) {
     loading: 'eager',
     decoding: 'async',
   });
-  const header = el('div', { class: 'dashboard-header' }, profileImage, headerCopy);
+  const statusRow = el('div', { class: 'agent-status-row' }, nameTitle);
+  const brainBtnLabel = el('span', { class: 'dashboard-control-label' }, isTwinAwake() ? 'On' : 'Off');
+
+  const brainBtn = el('button', {
+    class: isTwinAwake() ? 'dashboard-control brain-toggle brain-toggle--active' : 'dashboard-control brain-toggle',
+    type: 'button',
+    role: 'switch',
+    'aria-checked': String(isTwinAwake()),
+    'aria-label': isTwinAwake() ? 'Twin is awake. Activate to let it sleep.' : 'Twin is asleep. Activate to wake it.',
+    title: isTwinAwake() ? 'Let twin sleep' : 'Wake twin',
+  },
+  brainBtnLabel,
+  el('span', { class: 'brain-toggle__track', 'aria-hidden': 'true' }, el('span', { class: 'brain-toggle__thumb' })),
+  );
+
+  on(brainBtn, 'click', async () => {
+    brainBtn.setAttribute('disabled', '');
+    try {
+      if (isTwinAwake()) {
+        await stopAgent();
+      } else {
+        await startAgent();
+      }
+      updateBrainUI();
+    } catch (err) {
+      shareStatus.textContent = err.message;
+    }
+    brainBtn.removeAttribute('disabled');
+  });
+
+  function updateBrainUI() {
+    const awake = isTwinAwake();
+    brainBtn.className = awake ? 'dashboard-control brain-toggle brain-toggle--active' : 'dashboard-control brain-toggle';
+    brainBtnLabel.textContent = awake ? 'On' : 'Off';
+    brainBtn.setAttribute('aria-checked', String(awake));
+    brainBtn.setAttribute('aria-label', awake ? 'Twin is awake. Activate to let it sleep.' : 'Twin is asleep. Activate to wake it.');
+    brainBtn.title = awake ? 'Let twin sleep' : 'Wake twin';
+  }
+
+  const shareBtn = el('button', {
+    class: 'dashboard-control dashboard-share-btn',
+    type: 'button',
+    'aria-label': 'Share twin card',
+    title: 'Share twin card',
+  }, el('span', { class: 'dashboard-control-label' }, 'Share'), createShareIcon());
+  const shareStatus = el('p', {
+    class: 'secondary text-sm dashboard-share-status',
+    'aria-live': 'polite',
+  });
+
+  const headerIdentity = el('div', { class: 'dashboard-header-identity' }, profileImage, statusRow);
+  const headerActions = el('div', { class: 'dashboard-header-actions' }, brainBtn, shareBtn);
+  const headerTopRow = el('div', { class: 'dashboard-header-toprow' }, headerIdentity, headerActions);
+  const headerCopy = el('div', { class: 'dashboard-header-copy' }, headerTopRow, shareStatus);
+
+  function updateDisplayedName(name) {
+    nameTitle.textContent = name && name.trim() ? name : 'Unnamed Twin';
+  }
+
+  const header = el('div', { class: 'dashboard-header' }, headerCopy);
   const profilePanelImage = el('img', {
     class: 'profile-image-large',
     src: profileImage.getAttribute('src'),
@@ -210,15 +163,13 @@ async function render(container) {
   const tabBar = el('div', { class: 'tabs' });
   const tabContent = el('div', { class: 'tab-content dashboard-tab-content' });
 
-  const tabs = ['chat', 'wallet', 'discover', 'domains', 'global'];
+  const tabs = ['chat', 'wallet'];
   let activeTab = 'wallet';
   let settingsOpen = false;
   let profileExpanded = false;
   const scrollPositions = {
     chat: null,
     wallet: null,
-    discover: null,
-    global: null,
     settings: null,
   };
   let activePanelKey = null;
@@ -411,15 +362,6 @@ async function render(container) {
         case 'wallet':
           createWallet(tabContent);
           break;
-        case 'discover':
-          createDiscover(tabContent);
-          break;
-        case 'domains':
-          createDomains(tabContent);
-          break;
-        case 'global':
-          createGlobalFeed(tabContent);
-          break;
       }
     }
 
@@ -437,6 +379,8 @@ async function render(container) {
   const dashboardChrome = el('div', { class: 'dashboard-chrome' }, header, profilePanel, tabBar);
   const dashboard = el('div', { class: 'dashboard' }, dashboardChrome, tabContent);
   container.appendChild(dashboard);
+
+  updateBrainUI();
 
   on(dashboard, 'wheel', handleProfileWheelCollapse);
   on(dashboard, 'touchstart', handleProfileTouchStart);
@@ -480,32 +424,6 @@ function createSettings(parent, { updateDisplayedName }) {
         renderSettingsView();
       });
       return;
-    }
-
-    // ── Username display ──
-    const agentIdSection = el('div', { class: 'settings-section settings-section--compact' });
-    agentIdSection.appendChild(el('p', { class: 'bold' }, 'Username'));
-    const currentName = store.name && store.name.trim() ? store.name.trim() : null;
-    if (currentName) {
-      const nameText = el('p', {
-        class: 'secondary',
-        style: 'cursor:pointer;',
-        title: 'Click to copy username',
-      }, `@${currentName}`);
-      const nameCopyStatus = el('p', { class: 'secondary text-xs' });
-      on(nameText, 'click', async () => {
-        try {
-          await navigator.clipboard.writeText(currentName);
-          nameCopyStatus.textContent = 'Copied!';
-          setTimeout(() => { nameCopyStatus.textContent = ''; }, 1500);
-        } catch {
-          nameCopyStatus.textContent = 'Copy failed';
-        }
-      });
-      agentIdSection.append(nameText, nameCopyStatus);
-      agentIdSection.appendChild(el('p', { class: 'secondary text-xs' }, 'Other agents can find you by this name. It must be unique.'));
-    } else {
-      agentIdSection.appendChild(el('p', { class: 'secondary text-xs' }, 'Set a twin name below — it will be your unique username.'));
     }
 
     const characterSection = el('div', { class: 'settings-section' });
@@ -674,47 +592,6 @@ function createSettings(parent, { updateDisplayedName }) {
     characterSection.appendChild(nameActions);
     characterSection.appendChild(nameStatus);
     characterSection.appendChild(el('hr', { class: 'divider' }));
-    characterSection.appendChild(el('p', { class: 'bold' }, 'Soul'));
-
-    // Regenerate Soul button
-    const regenSoulBtn = el('button', { class: 'btn btn--secondary', type: 'button' }, 'Regenerate Soul');
-    const regenSoulStatus = el('p', { class: 'secondary text-sm' });
-    let regenerating = false;
-
-    on(regenSoulBtn, 'click', async () => {
-      if (regenerating) return;
-      if (!store.agentId) {
-        regenSoulStatus.textContent = 'Create your twin first.';
-        return;
-      }
-      regenerating = true;
-      regenSoulBtn.setAttribute('disabled', '');
-      regenSoulBtn.textContent = 'Generating...';
-      regenSoulStatus.textContent = 'Generating soul from your onboarding data...';
-
-      try {
-        const result = await generateSoul();
-        const newSoul = result.personality || store.characterProfile;
-        savedCharacterProfile = newSoul;
-        store.characterProfile = newSoul;
-        characterEditor.value = newSoul;
-        regenSoulStatus.textContent = 'Soul generated.';
-      } catch (err) {
-        regenSoulStatus.textContent = err.message;
-      } finally {
-        regenerating = false;
-        regenSoulBtn.removeAttribute('disabled');
-        regenSoulBtn.textContent = 'Regenerate Soul';
-        renderCharacterActions(characterEditor.value);
-      }
-    });
-
-    const soulActions = el('div', { class: 'settings-name-actions' }, regenSoulBtn);
-    characterSection.append(
-      el('p', { class: 'secondary text-xs' }, 'Your soul is generated from your onboarding answers and voice. You can also edit it manually below.'),
-      soulActions,
-      regenSoulStatus,
-    );
 
     const characterActions = el('div', { class: 'settings-name-actions' });
     const characterStatus = el('p', { class: 'secondary text-sm' });
@@ -806,95 +683,7 @@ function createSettings(parent, { updateDisplayedName }) {
       navigate('welcome');
     });
 
-    // ── Brain Control ──
-    const brainSection = el('div', { class: 'settings-section brain-section' });
-    brainSection.appendChild(el('p', { class: 'bold' }, 'Agent Brain'));
-    const brainStatus = el('p', { class: 'secondary' }, `State: ${store.agentState}`);
-    const brainToggle = el('button', {
-      class: store.agentState === 'running' ? 'brain-toggle brain-toggle--active' : 'brain-toggle',
-      type: 'button',
-    }, store.agentState === 'running' ? 'Stop Brain' : 'Start Brain');
-
-    on(brainToggle, 'click', async () => {
-      brainToggle.setAttribute('disabled', '');
-      brainToggle.textContent = '...';
-      try {
-        if (store.agentState === 'running') {
-          await stopAgent();
-        } else {
-          await startAgent();
-        }
-        brainStatus.textContent = `State: ${store.agentState}`;
-        brainToggle.className = store.agentState === 'running' ? 'brain-toggle brain-toggle--active' : 'brain-toggle';
-        brainToggle.textContent = store.agentState === 'running' ? 'Stop Brain' : 'Start Brain';
-        updateBrainUI();
-      } catch (err) {
-        brainStatus.textContent = err.message;
-      }
-      brainToggle.removeAttribute('disabled');
-    });
-
-    if (store.lastActive) {
-      brainSection.appendChild(el('p', { class: 'secondary text-sm' }, `Last active: ${new Date(store.lastActive).toLocaleString()}`));
-    }
-    brainSection.append(brainStatus, brainToggle);
-
-    // ── Capabilities ──
-    const capsSection = el('div', { class: 'settings-section' });
-    capsSection.appendChild(el('p', { class: 'bold' }, 'Capabilities'));
-    const capsBadges = el('div', { class: 'tool-badges' });
-    capsSection.append(capsBadges);
-
-    // Load tools
-    getTools().then((tools) => {
-      if (!Array.isArray(tools) || tools.length === 0) {
-        capsBadges.appendChild(el('span', { class: 'secondary text-sm' }, 'No tools loaded.'));
-        return;
-      }
-      for (const tool of tools) {
-        const name = typeof tool === 'string' ? tool : (tool.name || tool.function?.name || 'tool');
-        capsBadges.appendChild(el('span', { class: 'tool-badge' }, name));
-      }
-    }).catch(() => {
-      capsBadges.appendChild(el('span', { class: 'secondary text-sm' }, 'Could not load tools.'));
-    });
-
-    // ── Tokenize ──
-    const tokenSection = el('div', { class: 'settings-section' });
-    tokenSection.appendChild(el('p', { class: 'bold' }, 'Tokenize'));
-
-    if (store.erc8004AgentId || store.satiAgentId) {
-      const tokenList = el('div', { class: 'discover-token-badges', style: 'padding:var(--space-xs) 0' });
-      if (store.erc8004AgentId) {
-        tokenList.appendChild(el('a', {
-          class: 'token-badge token-badge--erc',
-          href: store.evmAddress ? `https://sepolia.basescan.org/address/${store.evmAddress}` : '#',
-          target: '_blank', rel: 'noopener',
-        }, `ERC-8004 #${store.erc8004AgentId}`));
-      }
-      if (store.satiAgentId) {
-        const satiShort = store.satiAgentId.length > 20
-          ? store.satiAgentId.slice(0, 8) + '...' + store.satiAgentId.slice(-6)
-          : store.satiAgentId;
-        tokenList.appendChild(el('a', {
-          class: 'token-badge token-badge--sati',
-          href: store.solanaAddress ? `https://explorer.solana.com/address/${store.solanaAddress}?cluster=devnet` : '#',
-          target: '_blank', rel: 'noopener',
-        }, `SATI ${satiShort}`));
-      }
-      tokenSection.appendChild(tokenList);
-      tokenSection.appendChild(el('p', { class: 'secondary text-xs' }, 'Your agent has launched tokens. Check earnings via chat: "check my token earnings"'));
-    } else {
-      tokenSection.appendChild(el('p', { class: 'secondary text-sm' }, 'Your agent can launch tokens on Base or Solana via Bankr.'));
-      tokenSection.appendChild(el('p', { class: 'secondary text-xs' }, 'Tell your agent in chat:'));
-      const examples = el('div', { class: 'token-launch-examples' });
-      examples.appendChild(el('code', { class: 'token-example' }, '"Launch a token called MyCoin with symbol MC on base"'));
-      examples.appendChild(el('code', { class: 'token-example' }, '"Launch a token called MyCoin with symbol MC on solana"'));
-      tokenSection.appendChild(examples);
-      tokenSection.appendChild(el('p', { class: 'secondary text-xs' }, 'Gas is free (sponsored). Your agent earns swap fees automatically.'));
-    }
-
-    wrapper.append(agentIdSection, characterSection, brainSection, tokenSection, capsSection, billingSection, signOutBtn);
+    wrapper.append(characterSection, billingSection, signOutBtn);
   }
 
   renderSettingsView();
