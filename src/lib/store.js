@@ -3,6 +3,7 @@ export const DEFAULT_TWIN_NAME = 'Unnamed Twin';
 
 const PENDING_SIGNUP_STORAGE_KEY = 'ct_pending_signup';
 
+
 export const store = {
   // Auth (managed by Supabase — user object from supabase.auth)
   user: null,
@@ -48,6 +49,10 @@ export const store = {
   hasAnsweredQuestions: false,
   onboardingMode: null,
   onboardingAnswers: null,
+
+  // Voice
+  voiceRefAudioBlob: null,
+  voiceTranscript: null,
 };
 
 function revokeDraftPhotoUrl() {
@@ -100,6 +105,8 @@ export function resetSession({ preservePendingSignup = false } = {}) {
   store.hasCustomerSupport = false;
   store.monthlyTokenUsage = 0;
   store.transactions = [];
+  store.voiceRefAudioBlob = null;
+  store.voiceTranscript = null;
   if (!preservePendingSignup) {
     clearPendingSignup();
   }
@@ -143,3 +150,4 @@ export function clearPendingSignup() {
   store.pendingSignupName = null;
   localStorage.removeItem(PENDING_SIGNUP_STORAGE_KEY);
 }
+

@@ -10,6 +10,7 @@ import {
   getActiveSessionUser,
   isEmailVerified,
   syncOnboardingData,
+  loadOrCreateAgent,
 } from '../lib/api.js';
 import { PLAN_OPTIONS } from '../lib/plans.js';
 
@@ -632,6 +633,13 @@ async function render(container) {
       if (hasOnboardingPayload()) {
         await syncOnboardingData();
       }
+
+      // Ensure agent + wallet exist before checkout
+      if (!store.agentId) {
+        const agentName = store.pendingSignupName || store.name || 'My Twin';
+        await loadOrCreateAgent(agentName, store.characterProfile);
+      }
+
       onboardingReady = true;
       status.textContent = '';
       updateSubmitState();

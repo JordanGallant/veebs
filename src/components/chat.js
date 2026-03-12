@@ -1,14 +1,13 @@
 import { el, on, clear } from '../lib/dom.js';
 import { store } from '../lib/store.js';
-import { sendMessage, getChatHistory, speakText } from '../lib/api.js';
+import { sendMessage, getChatHistory, loadVoiceRef, uploadVoiceMemo } from '../lib/api.js';
+import { generateSpeech } from '../lib/tts-api.js';
 import { marked } from 'marked';
 
 marked.setOptions({
   breaks: true,
   gfm: true,
 });
-
-let currentAudio = null;
 
 function getSleepingReplyName() {
   const preferredName = store.ownerReferenceName
@@ -17,6 +16,26 @@ function getSleepingReplyName() {
     || store.name;
   const trimmedName = typeof preferredName === 'string' ? preferredName.trim() : '';
   return trimmedName || 'friend';
+}
+
+async function generateVoiceNote(text) {
+  await loadVoiceRef();
+
+  if (!store.voiceRefAudioBlob || !store.voiceTranscript) {
+    return null;
+  }
+
+  const wavBlob = await generateSpeech(text, {
+    refAudioBlob: store.voiceRefAudioBlob,
+    refText: store.voiceTranscript,
+  });
+
+  // Upload to Supabase in background
+  uploadVoiceMemo(store.agentId, wavBlob).catch((err) => {
+    console.warn('Voice memo upload failed:', err.message);
+  });
+
+  return wavBlob;
 }
 
 export function createChat(parent, options = {}) {
@@ -46,63 +65,6 @@ export function createChat(parent, options = {}) {
     }
     msgEl.appendChild(textEl);
 
-    // Speak button for agent messages
-    if (role !== 'user' && content && !content.startsWith('Error:')) {
-      const speakBtn = el('button', {
-        class: 'chat-speak-btn',
-        type: 'button',
-        title: 'Listen',
-        'aria-label': 'Listen to message',
-      }, '\u{1F50A}');
-
-      let speaking = false;
-
-      on(speakBtn, 'click', async () => {
-        // Stop current audio if playing
-        if (currentAudio) {
-          currentAudio.pause();
-          currentAudio = null;
-        }
-
-        if (speaking) {
-          speaking = false;
-          speakBtn.textContent = '\u{1F50A}';
-          return;
-        }
-
-        speaking = true;
-        speakBtn.textContent = '...';
-
-        try {
-          const voice = await speakText(content);
-          if (!voice.voice_memo_url) throw new Error('No audio');
-
-          const audio = new Audio(voice.voice_memo_url);
-          currentAudio = audio;
-
-          audio.addEventListener('ended', () => {
-            speaking = false;
-            speakBtn.textContent = '\u{1F50A}';
-            if (currentAudio === audio) currentAudio = null;
-          });
-
-          audio.addEventListener('error', () => {
-            speaking = false;
-            speakBtn.textContent = '\u{1F50A}';
-            if (currentAudio === audio) currentAudio = null;
-          });
-
-          await audio.play();
-          speakBtn.textContent = '\u{23F9}';
-        } catch {
-          speaking = false;
-          speakBtn.textContent = '\u{1F50A}';
-        }
-      });
-
-      msgEl.appendChild(speakBtn);
-    }
-
     // Tool calls
     if (Array.isArray(extras.toolCalls) && extras.toolCalls.length > 0) {
       const toolsWrap = el('div', { class: 'chat-tool-calls' });
@@ -131,6 +93,16 @@ export function createChat(parent, options = {}) {
 
     log.appendChild(msgEl);
     if (autoScroll) log.scrollTop = log.scrollHeight;
+    return msgEl;
+  }
+
+  function appendVoiceNote(msgEl, audioBlob) {
+    const url = URL.createObjectURL(audioBlob);
+    const audio = el('audio', { controls: '', class: 'chat-voice-note' });
+    audio.src = url;
+    audio.addEventListener('ended', () => URL.revokeObjectURL(url));
+    msgEl.appendChild(audio);
+    log.scrollTop = log.scrollHeight;
   }
 
   function renderMessages() {
@@ -178,7 +150,18 @@ export function createChat(parent, options = {}) {
       };
       store.messages.push({ role: 'twin', content: reply, extras });
       if (typing.parentNode) typing.parentNode.removeChild(typing);
-      appendMessage('twin', reply, extras);
+      const msgEl = appendMessage('twin', reply, extras);
+
+      // Generate voice note when backend flags voice_reply
+      if (data.voice_reply && reply && !reply.startsWith('Error:')) {
+        generateVoiceNote(reply)
+          .then((blob) => {
+            if (blob) appendVoiceNote(msgEl, blob);
+          })
+          .catch((err) => {
+            console.warn('Voice note generation failed:', err.message);
+          });
+      }
     } catch (err) {
       if (typing.parentNode) typing.parentNode.removeChild(typing);
       const msg = err.message.includes('Authorization') || err.message.includes('signed in')

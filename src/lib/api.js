@@ -8,6 +8,7 @@ import { store, resetSession } from './store.js';
 
 const ONBOARDING_PHOTO_BUCKET = 'onboarding-photos';
 const ONBOARDING_AUDIO_BUCKET = 'onboarding-audio';
+const VOICE_MEMOS_BUCKET = 'voice-memos';
 
 const AGENTS_API = 'https://agents.jgsleepy.xyz';
 const PENDING_PRICING_SESSION_STORAGE_KEY = 'ct_pending_checkout_session_id';
@@ -605,11 +606,13 @@ export async function deleteDnsRecord(domain, recordId) {
 
 // ── Soul Generation ──
 
-export async function generateSoul() {
+export async function generateSoul(transcript) {
   if (!store.agentId) throw new Error('No agent');
+  const body = { supabase_agent_id: store.agentId };
+  if (transcript) body.voice_transcript = transcript;
   const data = await agentsApiFetch('/api/agents/generate-soul', {
     method: 'POST',
-    body: JSON.stringify({ supabase_agent_id: store.agentId }),
+    body: JSON.stringify(body),
   });
   // Backend saves personality to Supabase — update local store
   if (data.personality) {
@@ -638,6 +641,49 @@ export async function speakText(text) {
     }),
   });
   return data;
+}
+
+export async function loadVoiceRef() {
+  // Already cached — no-op
+  if (store.voiceRefAudioBlob && store.voiceTranscript) return;
+
+  // Load transcript from profile
+  if (!store.voiceTranscript) {
+    const profile = await getProfile();
+    if (profile?.voice_transcript) {
+      store.voiceTranscript = profile.voice_transcript;
+    }
+  }
+
+  // Load audio blob from onboarding-audio bucket
+  if (!store.voiceRefAudioBlob) {
+    const { data: files, error: listError } = await supabase.storage
+      .from(ONBOARDING_AUDIO_BUCKET)
+      .list(store.user.id, { limit: 1 });
+    if (listError) throw new Error(listError.message);
+
+    if (files && files.length > 0) {
+      const { data: blob, error: dlError } = await supabase.storage
+        .from(ONBOARDING_AUDIO_BUCKET)
+        .download(`${store.user.id}/${files[0].name}`);
+      if (dlError) throw new Error(dlError.message);
+      store.voiceRefAudioBlob = blob;
+    }
+  }
+}
+
+export async function uploadVoiceMemo(agentId, audioBlob) {
+  const path = `${store.user.id}/${agentId}/${Date.now()}.wav`;
+  const { error } = await supabase.storage
+    .from(VOICE_MEMOS_BUCKET)
+    .upload(path, audioBlob, { contentType: 'audio/wav', upsert: false });
+  if (error) throw new Error(error.message);
+
+  const { data: signed, error: signedError } = await supabase.storage
+    .from(VOICE_MEMOS_BUCKET)
+    .createSignedUrl(path, 60 * 60);
+  if (signedError) throw new Error(signedError.message);
+  return signed?.signedUrl || null;
 }
 
 // ── Brain Control ──

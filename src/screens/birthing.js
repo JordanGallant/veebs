@@ -4,7 +4,8 @@ import { store } from '../lib/store.js';
 import { createAsciiCamera } from '../components/ascii-camera.js';
 import { animateTypewriter } from '../lib/typewriter.js';
 import { createCyborgPortraitFromSnapshot } from '../lib/fal-edit.js';
-import { getActiveSessionUser, isEmailVerified, saveProfileImage, generateSoul, cloneVoice } from '../lib/api.js';
+import { getActiveSessionUser, isEmailVerified, saveProfileImage, generateSoul, updateProfile } from '../lib/api.js';
+import { transcribeAudio } from '../lib/tts-api.js';
 
 const BIRTHING_MESSAGES = [
   'Analyzing voice patterns...',
@@ -127,19 +128,34 @@ async function render(container) {
     status.textContent = BIRTHING_MESSAGES[msgIdx];
   }, 1200);
 
-  // Fire portrait, soul, and voice clone in parallel
+  // Transcribe voice, then generate soul with transcript; portrait in parallel
   const portraitPromise = generateAndSavePortrait(status);
-  const soulPromise = generateSoul().catch((err) => {
-    console.warn('Soul generation failed:', err.message);
-  });
-  const voicePromise = cloneVoice().catch((err) => {
-    console.warn('Voice cloning failed:', err.message);
-  });
+
+  const voiceAndSoulPromise = (async () => {
+    let transcript = null;
+    if (store.audioBlob) {
+      try {
+        transcript = await transcribeAudio(store.audioBlob);
+        store.voiceTranscript = transcript;
+        store.voiceRefAudioBlob = store.audioBlob;
+        // Persist transcript to profile
+        await updateProfile({ voice_transcript: transcript }).catch((err) => {
+          console.warn('Could not save voice transcript:', err.message);
+        });
+      } catch (err) {
+        console.warn('Voice transcription failed:', err.message);
+      }
+    }
+    // Generate soul with transcript (or without if transcription failed)
+    await generateSoul(transcript).catch((err) => {
+      console.warn('Soul generation failed:', err.message);
+    });
+  })();
 
   // Wait at least 5.6s for the animation, then wait for all to finish
   const minWait = new Promise((r) => setTimeout(r, 5600));
 
-  Promise.all([minWait, portraitPromise, soulPromise, voicePromise]).then(() => {
+  Promise.all([minWait, portraitPromise, voiceAndSoulPromise]).then(() => {
     clearInterval(msgTimer);
     panel.classList.remove('is-visible');
     panel.classList.add('is-exiting');
