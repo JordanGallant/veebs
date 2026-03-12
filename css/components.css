@@ -1330,6 +1330,60 @@
   flex: 1;
 }
 
+.withdraw-form-section {
+  margin-top: var(--space-xs);
+}
+
+.withdraw-form {
+  display: flex;
+  gap: var(--space-sm);
+  align-items: flex-end;
+}
+
+.withdraw-form .input {
+  flex: 1;
+}
+
+.withdraw-success {
+  margin-top: var(--space-xs);
+  padding: var(--space-xs);
+  border: 1px solid var(--color-fg);
+  border-radius: var(--radius);
+  font-size: 0.85em;
+}
+
+.withdraw-success a {
+  color: var(--color-fg);
+  text-decoration: underline;
+}
+
+.withdrawal-history {
+  margin-top: var(--space-sm);
+}
+
+.withdrawal-history-title {
+  font-size: 0.85em;
+  margin-bottom: var(--space-xs);
+}
+
+.withdrawal-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: var(--space-xs) 0;
+  border-bottom: 1px solid color-mix(in srgb, var(--color-fg) 15%, transparent);
+  font-size: 0.8em;
+}
+
+.withdrawal-item:last-child {
+  border-bottom: none;
+}
+
+.withdrawal-item a {
+  color: var(--color-fg);
+  text-decoration: underline;
+}
+
 /* --- Responsive --- */
 
 @media (max-width: 480px) {

@@ -477,6 +477,27 @@ export async function getWalletBalances() {
   );
 }
 
+// ── Withdrawals ──
+
+export async function withdrawFunds(amountUsd, chain = 'solana') {
+  if (!store.agentId) throw new Error('No agent');
+  return agentsApiFetch('/api/agents/supabase-withdraw', {
+    method: 'POST',
+    body: JSON.stringify({
+      supabase_agent_id: store.agentId,
+      amount_usd: String(amountUsd),
+      chain,
+    }),
+  });
+}
+
+export async function getWithdrawalHistory() {
+  if (!store.agentId) return { withdrawals: [] };
+  return agentsApiFetch(
+    `/api/agents/supabase-withdraw?supabase_agent_id=${encodeURIComponent(store.agentId)}`,
+  );
+}
+
 // ── Soul Generation ──
 
 export async function generateSoul() {

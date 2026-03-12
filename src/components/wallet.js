@@ -1,6 +1,6 @@
 import { el, on, clear } from '../lib/dom.js';
 import { store } from '../lib/store.js';
-import { createCheckout, getWalletBalances } from '../lib/api.js';
+import { createCheckout, getWalletBalances, withdrawFunds, getWithdrawalHistory } from '../lib/api.js';
 
 export function createWallet(parent) {
   // ── Balance Grid ──
@@ -131,12 +131,70 @@ export function createWallet(parent) {
     );
   }
 
+  // ── Withdraw helper ──
+  function createWithdrawForm(chain, label) {
+    const id = `withdraw-amount-${chain}`;
+    const amountLabel = el('label', { for: id, class: 'text-sm' }, `Withdraw (USD) → ${label}`);
+    const amountInput = el('input', {
+      class: 'input', type: 'number', id,
+      min: '1', step: '1', placeholder: '10',
+    });
+    const btn = el('button', { class: 'btn btn--outline' }, 'Withdraw');
+    const status = el('p', { class: 'secondary text-sm' });
+    const resultBox = el('div');
+
+    on(btn, 'click', async () => {
+      const val = parseFloat(amountInput.value);
+      if (isNaN(val) || val <= 0) { status.textContent = 'Enter an amount.'; return; }
+
+      btn.setAttribute('disabled', '');
+      btn.textContent = 'Processing...';
+      status.textContent = '';
+      clear(resultBox);
+
+      try {
+        const result = await withdrawFunds(val, chain);
+        amountInput.value = '';
+        status.textContent = '';
+
+        const successEl = el('div', { class: 'withdraw-success' },
+          el('p', null, `Withdrawn $${result.amount_usd} USDC`),
+          result.explorer
+            ? el('a', { href: result.explorer, target: '_blank', rel: 'noopener' }, 'View transaction')
+            : null,
+          result.stripe_transfer_id
+            ? el('p', { class: 'secondary text-xs' }, `Stripe: ${result.stripe_transfer_id}`)
+            : null,
+        );
+        clear(resultBox);
+        resultBox.appendChild(successEl);
+        refreshBalances();
+        loadHistory();
+      } catch (err) {
+        status.textContent = err.message;
+      }
+
+      btn.removeAttribute('disabled');
+      btn.textContent = 'Withdraw';
+    });
+
+    return el('div', { class: 'withdraw-form-section' },
+      el('div', { class: 'withdraw-form' },
+        el('div', { style: 'flex:1;display:flex;flex-direction:column;gap:var(--space-xs)' }, amountLabel, amountInput),
+        btn,
+      ),
+      status,
+      resultBox,
+    );
+  }
+
   // ── Solana Section ──
   const solChildren = [el('p', { class: 'text-sm bold' }, 'Solana Wallet')];
   if (solQr) solChildren.push(solQr);
   solChildren.push(solAddrEl);
   if (solExplorer) solChildren.push(solExplorer);
   solChildren.push(createDepositForm('solana', 'Solana USDC'));
+  solChildren.push(createWithdrawForm('solana', 'Solana USDC'));
   const solSection = el('div', { class: 'wallet-chain-section' }, ...solChildren);
 
   // ── EVM Section ──
@@ -145,6 +203,7 @@ export function createWallet(parent) {
   evmChildren.push(evmAddrEl);
   if (evmExplorer) evmChildren.push(evmExplorer);
   evmChildren.push(createDepositForm('base-sepolia', 'Base Sepolia USDC'));
+  evmChildren.push(createWithdrawForm('base-sepolia', 'Base Sepolia USDC'));
   const evmSection = el('div', { class: 'wallet-chain-section' }, ...evmChildren);
 
   // ── Rocks Balance ──
@@ -162,10 +221,43 @@ export function createWallet(parent) {
   );
 
   if (rocksEl) wrapper.appendChild(rocksEl);
+
+  // ── Withdrawal History ──
+  const historyTitle = el('p', { class: 'text-sm bold withdrawal-history-title' }, 'Withdrawal History');
+  const historyList = el('div');
+  const historySection = el('div', { class: 'withdrawal-history' }, historyTitle, historyList);
+  historySection.style.display = 'none';
+  wrapper.appendChild(el('hr', { class: 'divider' }));
+  wrapper.appendChild(historySection);
+
   parent.appendChild(wrapper);
 
-  // Fetch real balances
+  function loadHistory() {
+    getWithdrawalHistory().then((data) => {
+      const items = data?.withdrawals || [];
+      if (items.length === 0) {
+        historySection.style.display = 'none';
+        return;
+      }
+      historySection.style.display = '';
+      clear(historyList);
+      for (const w of items) {
+        const left = el('span', null, `$${w.amount_usd} — ${w.status || 'completed'}`);
+        const right = w.tx_signature
+          ? el('a', {
+            href: `https://explorer.solana.com/tx/${w.tx_signature}?cluster=devnet`,
+            target: '_blank',
+            rel: 'noopener',
+          }, 'tx')
+          : el('span', { class: 'secondary' }, new Date(w.created_at).toLocaleDateString());
+        historyList.appendChild(el('div', { class: 'withdrawal-item' }, left, right));
+      }
+    }).catch(() => {});
+  }
+
+  // Fetch real balances and history
   refreshBalances();
+  loadHistory();
 
   function refreshBalances() {
     getWalletBalances().then((data) => {
