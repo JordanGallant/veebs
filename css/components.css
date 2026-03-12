@@ -56,7 +56,6 @@
 }
 
 .btn--danger {
-  opacity: var(--opacity-secondary);
   font-family: var(--font);
   font-weight: var(--font-normal);
   font-size: var(--text-sm);
