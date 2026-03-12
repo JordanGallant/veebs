@@ -4,22 +4,24 @@ import { store, savePendingSignup } from '../lib/store.js';
 import { createAsciiCamera } from '../components/ascii-camera.js';
 import { animateTypewriter } from '../lib/typewriter.js';
 import {
-  createCheckout,
+  clearPendingPricingCheckoutSessionId,
+  createPricingCheckoutSession,
   getActiveSessionUser,
   isEmailVerified,
-  markOnboardingPaid,
   syncOnboardingData,
 } from '../lib/api.js';
-import { PLAN_OPTIONS, applyPlanSelection } from '../lib/plans.js';
+import { PLAN_OPTIONS } from '../lib/plans.js';
 
 let cam = null;
 let revealTimer = 0;
 let stopHeadingType = null;
+let activeStripeCheckout = null;
 
 export function registerPricing() {
   registerScreen('pricing', {
     render,
     cleanup() {
+      destroyActiveStripeCheckout();
       if (cam) {
         cam.stop();
         if (cam.el.parentNode) cam.el.parentNode.removeChild(cam.el);
@@ -53,26 +55,21 @@ async function render(container) {
   store.asciiTransitionBodyTime = null;
 
   const heading = el('h1', { class: 'text-lg bold pricing-heading' }, '');
-  const subtitle = el(
-    'p',
-    { class: 'secondary text-sm' },
-    'Choose a plan to activate your twin.',
-  );
 
   const optionsWrap = el('div', { class: 'pricing-options' });
-  const submitBtn = el('button', { class: 'btn', type: 'button', disabled: '' }, 'Select a plan');
-  const skipBtn = el('button', { class: 'btn btn--secondary', type: 'button', disabled: '' }, 'Skip for now');
+  const submitBtn = el('button', { class: 'btn', type: 'button', disabled: '' }, 'Continue with Stripe');
   const status = el('p', { class: 'secondary text-sm pricing-status' });
+  const checkoutStage = el('div', { class: 'pricing-checkout-shell', hidden: '' });
 
-  const actions = el('div', { class: 'pricing-signup' }, submitBtn, skipBtn, status);
+  const actions = el('div', { class: 'pricing-signup' }, submitBtn, status);
 
   const panel = el(
     'div',
     { class: 'overlay-panel overlay-shell pricing-panel' },
     heading,
-    subtitle,
     optionsWrap,
     actions,
+    checkoutStage,
   );
   const content = el('div', { class: 'recording-content' }, panel);
   const wrapper = el('div', { class: 'screen recording-screen' }, content);
@@ -83,17 +80,17 @@ async function render(container) {
     layer.appendChild(cam.el);
   }
 
-  let selectedOption = null;
+  let selectedOption = PLAN_OPTIONS.find((option) => option.recommended) || PLAN_OPTIONS[0] || null;
   let onboardingReady = false;
 
   function updateSubmitState() {
     if (!onboardingReady || !selectedOption) {
       submitBtn.setAttribute('disabled', '');
-      submitBtn.textContent = 'Select a plan';
+      submitBtn.textContent = 'Choose a plan';
       return;
     }
     submitBtn.removeAttribute('disabled');
-    submitBtn.textContent = `Pay (${selectedOption.price})`;
+    submitBtn.textContent = 'Continue with Stripe';
   }
 
   function renderOptions() {
@@ -103,6 +100,7 @@ async function render(container) {
         'button',
         {
           class: selectedOption && selectedOption.id === option.id ? 'pricing-option pricing-option--selected' : 'pricing-option',
+          'aria-pressed': selectedOption && selectedOption.id === option.id ? 'true' : 'false',
           type: 'button',
         },
         el(
@@ -122,98 +120,102 @@ async function render(container) {
     }
   }
 
-  on(skipBtn, 'click', () => {
-    if (!onboardingReady) return;
-    applyPlanSelection('skip');
-    store.pendingTwinBirth = true;
-    panel.classList.remove('is-visible');
-    panel.classList.add('is-exiting');
-    setTimeout(() => {
-      store.asciiTransitionBodyTime = cam ? cam.captureBodyVideoTime() : null;
-      navigate('birthing');
-    }, 420);
-  });
-
-  function proceedToBirthing() {
-    store.pendingTwinBirth = true;
-    panel.classList.remove('is-visible');
-    panel.classList.add('is-exiting');
-    // Also hide checkout embed if visible
-    const embedEl = wrapper.querySelector('.stripe-embed');
-    if (embedEl) embedEl.style.display = 'none';
-    setTimeout(() => {
-      store.asciiTransitionBodyTime = cam ? cam.captureBodyVideoTime() : null;
-      navigate('birthing');
-    }, 420);
+  function setCheckoutMode(isCheckout) {
+    panel.classList.toggle('pricing-panel--checkout', isCheckout);
+    optionsWrap.hidden = isCheckout;
+    actions.hidden = isCheckout;
+    checkoutStage.hidden = !isCheckout;
+    if (isCheckout) {
+      checkoutStage.classList.remove('print-reveal');
+      void checkoutStage.offsetWidth;
+      checkoutStage.classList.add('print-reveal');
+    } else {
+      checkoutStage.classList.remove('print-reveal');
+    }
   }
 
-  async function finalizePaidPlan(planId) {
-    applyPlanSelection(planId);
-    await markOnboardingPaid(planId);
-    proceedToBirthing();
+  async function ensureStripeJs() {
+    if (window.Stripe) return;
+    await new Promise((resolve, reject) => {
+      const existingScript = document.querySelector('script[data-stripe-js]');
+      if (existingScript) {
+        existingScript.addEventListener('load', resolve, { once: true });
+        existingScript.addEventListener('error', () => reject(new Error('Failed to load Stripe.')), { once: true });
+        return;
+      }
+
+      const script = document.createElement('script');
+      script.src = 'https://js.stripe.com/v3/';
+      script.dataset.stripeJs = 'true';
+      script.onload = resolve;
+      script.onerror = () => reject(new Error('Failed to load Stripe.'));
+      document.head.appendChild(script);
+    });
+  }
+
+  async function mountEmbeddedCheckout(checkout, option) {
+    destroyActiveStripeCheckout();
+
+    const checkoutDiv = el('div', { class: 'stripe-embed' });
+    const loading = el('div', { class: 'stripe-embed-loading secondary text-sm' }, 'Loading secure checkout...');
+    const backBtn = el('button', { class: 'btn btn--secondary stripe-embed-back', type: 'button' }, 'Change plan');
+
+    on(backBtn, 'click', () => {
+      destroyActiveStripeCheckout();
+      clearPendingPricingCheckoutSessionId();
+      setCheckoutMode(false);
+      status.textContent = '';
+      updateSubmitState();
+    });
+
+    checkoutStage.replaceChildren(
+      el(
+        'div',
+        { class: 'pricing-checkout-summary' },
+        el(
+          'div',
+          { class: 'pricing-checkout-heading' },
+          el(
+            'h2',
+            { class: 'bold pricing-checkout-title' },
+            option.title,
+          ),
+          el('p', { class: 'secondary text-sm pricing-checkout-copy' }, option.copy),
+        ),
+        el('p', { class: 'pricing-checkout-price' }, option.price),
+      ),
+      backBtn,
+      el('div', { class: 'stripe-embed-wrap' }, loading, checkoutDiv),
+    );
+
+    setCheckoutMode(true);
+
+    const stripe = window.Stripe(checkout.publishable_key);
+    activeStripeCheckout = await stripe.initEmbeddedCheckout({
+      clientSecret: checkout.client_secret,
+    });
+    activeStripeCheckout.mount(checkoutDiv);
+    loading.remove();
   }
 
   on(submitBtn, 'click', async () => {
     if (!selectedOption || !onboardingReady) return;
 
     submitBtn.setAttribute('disabled', '');
-    skipBtn.setAttribute('disabled', '');
-    status.textContent = 'Loading payment...';
+    status.textContent = 'Preparing secure checkout...';
+    localStorage.setItem('ct_pending_plan', selectedOption.id);
+    clearPendingPricingCheckoutSessionId();
 
     try {
-      const checkout = await createCheckout(selectedOption.amountUsd, { embedded: true });
-      if (checkout.client_secret && checkout.publishable_key) {
-        // Load Stripe.js if not already loaded
-        if (!window.Stripe) {
-          await new Promise((resolve, reject) => {
-            const s = document.createElement('script');
-            s.src = 'https://js.stripe.com/v3/';
-            s.onload = resolve;
-            s.onerror = () => reject(new Error('Failed to load Stripe'));
-            document.head.appendChild(s);
-          });
-        }
-
-        // Hide the pricing panel, show embedded checkout
-        panel.style.display = 'none';
-
-        const checkoutDiv = el('div', { class: 'stripe-embed' });
-        const backBtn = el('button', { class: 'btn btn--secondary stripe-embed-back', type: 'button' }, '← Back');
-        const embedWrap = el('div', { class: 'stripe-embed-wrap' }, backBtn, checkoutDiv);
-        content.appendChild(embedWrap);
-
-        on(backBtn, 'click', () => {
-          embedWrap.remove();
-          panel.style.display = '';
-          submitBtn.removeAttribute('disabled');
-          skipBtn.removeAttribute('disabled');
-          status.textContent = '';
-        });
-
-        const stripe = window.Stripe(checkout.publishable_key);
-        const stripeCheckout = await stripe.initEmbeddedCheckout({
-          clientSecret: checkout.client_secret,
-        });
-        stripeCheckout.mount(checkoutDiv);
-
-        // Poll for completion (Stripe embedded fires return_url but we intercept)
-        // TODO: poll checkout status via Supabase Edge Function
-        const pollInterval = setInterval(async () => {
-          try {
-            // Placeholder — wire up status check when Stripe backend is ready
-          } catch {}
-        }, 2000);
-      } else if (checkout.checkout_url) {
-        // Fallback to redirect if embedded not available
-        localStorage.setItem('ct_pending_plan', selectedOption.id);
-        window.location.href = checkout.checkout_url;
-      } else {
-        await finalizePaidPlan(selectedOption.id);
-      }
+      const checkout = await createPricingCheckoutSession(selectedOption.id);
+      await ensureStripeJs();
+      await mountEmbeddedCheckout(checkout, selectedOption);
+      status.textContent = '';
     } catch (err) {
+      destroyActiveStripeCheckout();
+      setCheckoutMode(false);
       status.textContent = err.message;
       submitBtn.removeAttribute('disabled');
-      skipBtn.removeAttribute('disabled');
     }
   });
 
@@ -224,7 +226,7 @@ async function render(container) {
   preparePricing();
   revealTimer = window.setTimeout(() => {
     panel.classList.add('is-visible');
-    stopHeadingType = animateTypewriter(heading, 'Choose your plan', {
+    stopHeadingType = animateTypewriter(heading, 'Get your twin', {
       speed: 24,
       swap: false,
     });
@@ -238,7 +240,6 @@ async function render(container) {
         await syncOnboardingData();
       }
       onboardingReady = true;
-      skipBtn.removeAttribute('disabled');
       status.textContent = '';
       updateSubmitState();
     } catch (err) {
@@ -254,4 +255,16 @@ function hasOnboardingPayload() {
     store.photoBlob ||
     store.audioBlob,
   );
+}
+
+function destroyActiveStripeCheckout() {
+  try {
+    if (activeStripeCheckout?.destroy) {
+      activeStripeCheckout.destroy();
+    } else if (activeStripeCheckout?.unmount) {
+      activeStripeCheckout.unmount();
+    }
+  } catch {}
+
+  activeStripeCheckout = null;
 }

@@ -1120,6 +1120,10 @@
   background: var(--surface-soft);
 }
 
+.pricing-checkout-shell[hidden] {
+  display: none;
+}
+
 .pricing-checkout-summary {
   display: flex;
   align-items: flex-start;
@@ -1151,10 +1155,8 @@
 .stripe-embed-wrap {
   position: relative;
   width: 100%;
-  padding: var(--space-sm);
-  border: var(--border-default);
   border-radius: var(--radius);
-  background: var(--surface-soft);
+  overflow: hidden;
 }
 
 .stripe-embed-back {
@@ -1162,7 +1164,8 @@
 }
 
 .stripe-embed {
-  min-height: 640px;
+  min-height: 480px;
+  border-radius: var(--radius);
 }
 
 .stripe-embed-loading {
@@ -1170,8 +1173,7 @@
   place-items: center;
   min-height: 120px;
   border-radius: var(--radius);
-  border: var(--border-default);
-  background: var(--surface-soft);
+  border: var(--border-subtle);
 }
 
 @media (max-width: 640px) {

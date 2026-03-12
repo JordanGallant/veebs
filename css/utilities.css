@@ -95,6 +95,23 @@
   max-width: none;
 }
 
+/* --- Print reveal --- */
+
+@keyframes print-reveal {
+  from {
+    clip-path: inset(0 0 100% 0);
+    opacity: 0;
+  }
+  to {
+    clip-path: inset(0);
+    opacity: 1;
+  }
+}
+
+.print-reveal {
+  animation: print-reveal var(--motion-slow) var(--ease-standard) both;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     animation: none !important;

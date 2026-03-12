@@ -10,6 +10,7 @@ description: >
 ## Intent
 - Keep the UI clean, strict, and readable with minimal visual noise.
 - Prefer consistency and reuse over one-off styling.
+- prefer icons over text lables and buttons, where it makes sense
 - Keep CSS easy to maintain for both humans and agents.
 
 ## Non-Negotiables
@@ -102,6 +103,25 @@ If TS controls theming, set these on `:root` via `theme.ts` during app startup.
     animation: none !important;
     transition: none !important;
   }
+}
+```
+
+### Print Reveal
+Reusable one-shot reveal animation that clips content in from top to bottom, like a receipt printing.
+Use it anywhere a hidden section needs to appear with a lightweight entrance.
+
+- Add `.print-reveal` to the element after making it visible (remove `hidden`, set `display`, etc.).
+- To replay the animation, remove the class, force a reflow (`void el.offsetWidth`), then re-add it.
+- Automatically disabled under `prefers-reduced-motion: reduce`.
+
+```css
+@keyframes print-reveal {
+  from { clip-path: inset(0 0 100% 0); opacity: 0; }
+  to   { clip-path: inset(0);           opacity: 1; }
+}
+
+.print-reveal {
+  animation: print-reveal var(--motion-slow) var(--ease-standard) both;
 }
 ```
 

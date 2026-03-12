@@ -11,12 +11,18 @@ import { registerAuth } from './screens/auth.js';
 import { registerShare } from './screens/share.js';
 import {
   store,
-  clearOnboardingDraft,
   resetSession,
   restorePendingSignup,
   savePendingSignup,
 } from './lib/store.js';
-import { restoreSession, isEmailVerified, markOnboardingPaid } from './lib/api.js';
+import {
+  clearPendingPricingCheckoutSessionId,
+  getPricingCheckoutSession,
+  isCompletedPricingCheckoutSession,
+  isEmailVerified,
+  markOnboardingPaid,
+  restoreSession,
+} from './lib/api.js';
 import { applyPlanSelection } from './lib/plans.js';
 
 initFavicon();
@@ -42,6 +48,13 @@ function syncSharePathToHash() {
   window.history.replaceState({}, '', `${url.pathname}${url.search}${url.hash}`);
 }
 
+function clearPaymentSearchParams() {
+  const url = new URL(window.location.href);
+  url.searchParams.delete('payment');
+  url.searchParams.delete('session_id');
+  window.history.replaceState({}, '', `${url.pathname}${url.search}${url.hash}`);
+}
+
 async function init() {
   restorePendingSignup();
   try {
@@ -52,22 +65,38 @@ async function init() {
   }
 
   const urlParams = new URLSearchParams(window.location.search);
-  if (urlParams.get('payment') === 'success') {
-    window.history.replaceState({}, '', window.location.pathname + window.location.hash);
+  const paymentStatus = urlParams.get('payment');
+  const returnedSessionId = urlParams.get('session_id');
+  if (returnedSessionId) {
+    localStorage.setItem('ct_pending_checkout_session_id', returnedSessionId);
+  }
+
+  if (paymentStatus === 'success') {
     const pendingPlan = localStorage.getItem('ct_pending_plan');
+    let verifiedPlan = pendingPlan;
+    let verifiedPricingCheckout = !pendingPlan;
 
-    if (pendingPlan && store.user && isEmailVerified(store.user)) {
-      if (store.agentId) {
-        localStorage.removeItem('ct_pending_plan');
-        clearOnboardingDraft();
-        window.location.hash = 'dashboard';
-        return;
-      }
-
-      localStorage.removeItem('ct_pending_plan');
-      applyPlanSelection(pendingPlan);
+    if (pendingPlan && returnedSessionId) {
       try {
-        await markOnboardingPaid(pendingPlan);
+        const checkoutSession = await getPricingCheckoutSession(returnedSessionId);
+        verifiedPricingCheckout = isCompletedPricingCheckoutSession(checkoutSession);
+        verifiedPlan = checkoutSession.plan_id || pendingPlan;
+      } catch (err) {
+        verifiedPricingCheckout = false;
+        console.warn('Could not verify Stripe checkout session:', err.message);
+      }
+    } else if (pendingPlan) {
+      verifiedPricingCheckout = false;
+    }
+
+    clearPaymentSearchParams();
+
+    if (pendingPlan && verifiedPricingCheckout && store.user && isEmailVerified(store.user)) {
+      localStorage.removeItem('ct_pending_plan');
+      clearPendingPricingCheckoutSessionId();
+      applyPlanSelection(verifiedPlan);
+      try {
+        await markOnboardingPaid(verifiedPlan);
       } catch (err) {
         console.warn('Could not mark onboarding as paid:', err.message);
       }
@@ -79,13 +108,18 @@ async function init() {
         store.pendingSignupName || store.name || store.user.user_metadata?.display_name || 'My Twin',
       );
       window.location.hash = 'verify-email';
-    } else if (!store.user && pendingPlan) {
+    } else if (pendingPlan && !store.user) {
       window.location.hash = 'auth?mode=signin';
+    } else if (pendingPlan && !verifiedPricingCheckout) {
+      clearPendingPricingCheckoutSessionId();
+      window.location.hash = 'pricing';
     } else if (store.user) {
+      clearPendingPricingCheckoutSessionId();
       window.location.hash = 'dashboard';
     }
-  } else if (urlParams.get('payment') === 'cancelled') {
-    window.history.replaceState({}, '', window.location.pathname + window.location.hash);
+  } else if (paymentStatus === 'cancelled') {
+    clearPendingPricingCheckoutSessionId();
+    clearPaymentSearchParams();
   }
 
   syncSharePathToHash();

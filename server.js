@@ -5,6 +5,7 @@ const { URL } = require('url');
 const falEditHandler = require('./api/fal-edit.js');
 const storeProfileImageHandler = require('./api/store-profile-image.js');
 const shareCardsHandler = require('./api/share-cards.js');
+const stripeCheckoutHandler = require('./api/stripe-checkout.js');
 
 const ROOT = __dirname;
 const PORT = Number(process.env.PORT || 3000);
@@ -56,14 +57,18 @@ function safeFilePath(pathname) {
 
 loadEnvFile();
 
+async function readRequestBody(req) {
+  const chunks = [];
+  for await (const chunk of req) chunks.push(chunk);
+  req.body = Buffer.concat(chunks).toString('utf8');
+}
+
 const server = http.createServer(async (req, res) => {
   const reqUrl = new URL(req.url || '/', `http://${req.headers.host || 'localhost'}`);
 
   if (reqUrl.pathname === '/api/fal-edit') {
     try {
-      const chunks = [];
-      for await (const chunk of req) chunks.push(chunk);
-      req.body = Buffer.concat(chunks).toString('utf8');
+      await readRequestBody(req);
       await falEditHandler(req, res);
     } catch {
       res.statusCode = 500;
@@ -75,9 +80,7 @@ const server = http.createServer(async (req, res) => {
 
   if (reqUrl.pathname === '/api/store-profile-image') {
     try {
-      const chunks = [];
-      for await (const chunk of req) chunks.push(chunk);
-      req.body = Buffer.concat(chunks).toString('utf8');
+      await readRequestBody(req);
       await storeProfileImageHandler(req, res);
     } catch {
       res.statusCode = 500;
@@ -89,10 +92,22 @@ const server = http.createServer(async (req, res) => {
 
   if (reqUrl.pathname === '/api/share-cards') {
     try {
-      const chunks = [];
-      for await (const chunk of req) chunks.push(chunk);
-      req.body = Buffer.concat(chunks).toString('utf8');
+      await readRequestBody(req);
       await shareCardsHandler(req, res);
+    } catch {
+      res.statusCode = 500;
+      res.setHeader('Content-Type', 'application/json');
+      res.end(JSON.stringify({ error: 'Unexpected server error.' }));
+    }
+    return;
+  }
+
+  if (reqUrl.pathname === '/api/stripe-checkout') {
+    try {
+      if (req.method === 'POST') {
+        await readRequestBody(req);
+      }
+      await stripeCheckoutHandler(req, res);
     } catch {
       res.statusCode = 500;
       res.setHeader('Content-Type', 'application/json');

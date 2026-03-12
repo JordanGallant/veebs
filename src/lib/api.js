@@ -10,6 +10,7 @@ const ONBOARDING_PHOTO_BUCKET = 'onboarding-photos';
 const ONBOARDING_AUDIO_BUCKET = 'onboarding-audio';
 
 const AGENTS_API = 'https://agents.jgsleepy.xyz';
+const PENDING_PRICING_SESSION_STORAGE_KEY = 'ct_pending_checkout_session_id';
 
 // ── Agents API helpers (no auth needed — endpoints use Supabase IDs) ──
 
@@ -18,6 +19,14 @@ async function agentsApiFetch(path, options = {}) {
   const res = await fetch(`${AGENTS_API}${path}`, { ...options, headers });
   const body = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(body.error || `Agents API error ${res.status}`);
+  return body;
+}
+
+async function localApiFetch(path, options = {}) {
+  const headers = { 'Content-Type': 'application/json', ...options.headers };
+  const res = await fetch(path, { ...options, headers });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(body.error || `Local API error ${res.status}`);
   return body;
 }
 
@@ -105,6 +114,7 @@ export async function resendSignupCode(email) {
 export async function logout() {
   await supabase.auth.signOut();
   localStorage.removeItem('ct_pending_plan');
+  clearPendingPricingCheckoutSessionId();
   resetSession();
 }
 
@@ -452,6 +462,44 @@ export async function markOnboardingPaid(planId) {
     selected_plan: planId,
     onboarding_paid_at: new Date().toISOString(),
   });
+}
+
+export async function createPricingCheckoutSession(planId) {
+  if (!planId) throw new Error('No plan selected.');
+
+  const checkout = await localApiFetch('/api/stripe-checkout', {
+    method: 'POST',
+    body: JSON.stringify({
+      plan_id: planId,
+      customer_email: store.user?.email || store.pendingSignupEmail || '',
+      agent_id: store.agentId || '',
+      user_id: store.user?.id || '',
+    }),
+  });
+
+  if (checkout?.session_id) {
+    localStorage.setItem(PENDING_PRICING_SESSION_STORAGE_KEY, checkout.session_id);
+  }
+
+  return checkout;
+}
+
+export async function getPricingCheckoutSession(sessionId) {
+  if (!sessionId) throw new Error('Missing Stripe checkout session.');
+  return localApiFetch(`/api/stripe-checkout?session_id=${encodeURIComponent(sessionId)}`);
+}
+
+export function isCompletedPricingCheckoutSession(session) {
+  return session?.status === 'complete'
+    && (session?.payment_status === 'paid' || session?.payment_status === 'no_payment_required');
+}
+
+export function getPendingPricingCheckoutSessionId() {
+  return localStorage.getItem(PENDING_PRICING_SESSION_STORAGE_KEY);
+}
+
+export function clearPendingPricingCheckoutSessionId() {
+  localStorage.removeItem(PENDING_PRICING_SESSION_STORAGE_KEY);
 }
 
 // ── Checkout, Deposits & Balances ──

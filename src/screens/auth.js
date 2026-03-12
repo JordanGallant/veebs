@@ -10,6 +10,10 @@ import {
 import { createAsciiCamera } from '../components/ascii-camera.js';
 import { animateTypewriter } from '../lib/typewriter.js';
 import {
+  clearPendingPricingCheckoutSessionId,
+  getPendingPricingCheckoutSessionId,
+  getPricingCheckoutSession,
+  isCompletedPricingCheckoutSession,
   register,
   login,
   loadOrCreateAgent,
@@ -174,11 +178,23 @@ function render(container) {
       store.name = agent?.name || agentName;
 
       const pendingPaidPlan = localStorage.getItem('ct_pending_plan');
-      if (pendingPaidPlan) {
+      const pendingPricingSessionId = getPendingPricingCheckoutSessionId();
+      if (pendingPaidPlan && pendingPricingSessionId) {
+        status.textContent = 'Verifying your payment...';
+        const checkoutSession = await getPricingCheckoutSession(pendingPricingSessionId);
+        if (!isCompletedPricingCheckoutSession(checkoutSession)) {
+          throw new Error('We could not verify your payment yet. Please return to pricing and try again.');
+        }
+
+        const verifiedPlan = checkoutSession.plan_id || pendingPaidPlan;
         localStorage.removeItem('ct_pending_plan');
-        applyPlanSelection(pendingPaidPlan);
-        await markOnboardingPaid(pendingPaidPlan);
+        clearPendingPricingCheckoutSessionId();
+        applyPlanSelection(verifiedPlan);
+        await markOnboardingPaid(verifiedPlan);
         store.pendingTwinBirth = true;
+      } else if (pendingPaidPlan) {
+        localStorage.removeItem('ct_pending_plan');
+        clearPendingPricingCheckoutSessionId();
       }
 
       status.textContent = 'Success! Redirecting...';
