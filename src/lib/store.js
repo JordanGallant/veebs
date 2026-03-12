@@ -35,8 +35,6 @@ export const store = {
   characterProfile: '',
   balance: 0,
   monthlySpendingLimit: null,
-  onDemandUsageEnabled: false,
-  onDemandTokenLimit: 1000000,
   monthlyTokenUsage: 0,
   transactions: [],
   messages: [],
@@ -100,8 +98,6 @@ export function resetSession({ preservePendingSignup = false } = {}) {
   store.asciiCamera = null;
   store.messageQuota = null;
   store.hasCustomerSupport = false;
-  store.onDemandUsageEnabled = false;
-  store.onDemandTokenLimit = 1000000;
   store.monthlyTokenUsage = 0;
   store.transactions = [];
   if (!preservePendingSignup) {

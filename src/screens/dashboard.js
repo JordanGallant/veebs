@@ -30,7 +30,6 @@ const TAB_LABELS = {
 const PLAN_TOKEN_QUOTAS = {
   trial: 100000,
   monthly: 5555000,
-  yearly: 5555000,
 };
 
 let profileImageUrl = '';
@@ -701,7 +700,7 @@ function createBillingPage(parent, onBack) {
     backBtn,
     el('p', { class: 'bold' }, 'Billing'),
   );
-  const subtitle = el('p', { class: 'secondary' }, 'Manage usage, plans, and on-demand controls.');
+  const subtitle = el('p', { class: 'secondary' }, 'Manage usage and plans.');
 
   const usageFold = el('details', { class: 'billing-fold', open: '' });
   const usageSummary = el('summary', { class: 'bold billing-fold-summary' }, 'Usage this month');
@@ -713,21 +712,15 @@ function createBillingPage(parent, onBack) {
   const planBody = el('div', { class: 'billing-fold-body' });
   planFold.append(planSummary, planBody);
 
-  const onDemandFold = el('details', { class: 'billing-fold' });
-  const onDemandSummary = el('summary', { class: 'bold billing-fold-summary' }, 'On-demand usage');
-  const onDemandBody = el('div', { class: 'billing-fold-body' });
-  onDemandFold.append(onDemandSummary, onDemandBody);
-
   const statusLine = el('p', { class: 'secondary' });
 
   on(backBtn, 'click', onBack);
 
-  page.append(header, subtitle, usageFold, planFold, onDemandFold, statusLine);
+  page.append(header, subtitle, usageFold, planFold, statusLine);
   parent.appendChild(page);
 
   renderUsage();
   renderPlanControls();
-  renderOnDemandControls();
 
   function renderUsage() {
     clear(usageBody);
@@ -815,126 +808,9 @@ function createBillingPage(parent, onBack) {
     planBody.append(planNotice, planList, cancelBtn);
   }
 
-  function renderOnDemandControls() {
-    clear(onDemandBody);
-
-    const toggleId = 'on-demand-toggle';
-    const tokenLimitId = 'on-demand-token-limit';
-    const spendLimitId = 'on-demand-spend-limit';
-
-    const onDemandToggle = el('input', {
-      id: toggleId,
-      type: 'checkbox',
-      class: 'billing-checkbox',
-    });
-    onDemandToggle.checked = Boolean(store.onDemandUsageEnabled);
-
-    const toggleLabel = el(
-      'label',
-      { class: 'billing-toggle', for: toggleId },
-      onDemandToggle,
-      el('span', { class: 'bold' }, 'Enable on-demand usage'),
-    );
-
-    const tokenLabel = el('label', { for: tokenLimitId }, 'Monthly extra token limit');
-    const tokenInput = el('input', {
-      class: 'input',
-      id: tokenLimitId,
-      type: 'number',
-      min: '1000',
-      step: '1000',
-    });
-    if (store.onDemandTokenLimit != null) {
-      tokenInput.value = String(store.onDemandTokenLimit);
-    }
-
-    const spendLabel = el('label', { for: spendLimitId }, 'Monthly spend limit (EUR)');
-    const spendInput = el('input', {
-      class: 'input',
-      id: spendLimitId,
-      type: 'number',
-      min: '0',
-      step: '1',
-    });
-    if (store.monthlySpendingLimit != null) {
-      spendInput.value = String(store.monthlySpendingLimit);
-    }
-
-    const inputGrid = el(
-      'div',
-      { class: 'billing-grid' },
-      el('div', { class: 'billing-field' }, tokenLabel, tokenInput),
-      el('div', { class: 'billing-field' }, spendLabel, spendInput),
-    );
-
-    const saveBtn = el('button', { class: 'btn btn--secondary', type: 'button' }, 'Save on-demand settings');
-    const onDemandStatus = el('p', { class: 'secondary' });
-
-    function applyToggleState() {
-      const isEnabled = onDemandToggle.checked;
-      tokenInput.disabled = !isEnabled;
-      spendInput.disabled = !isEnabled;
-      saveBtn.disabled = false;
-      inputGrid.classList.toggle('billing-grid--disabled', !isEnabled);
-      if (!isEnabled) {
-        onDemandStatus.textContent = 'On-demand usage is disabled.';
-      }
-    }
-
-    on(onDemandToggle, 'change', applyToggleState);
-
-    on(saveBtn, 'click', () => {
-      const isEnabled = onDemandToggle.checked;
-      if (!isEnabled) {
-        store.onDemandUsageEnabled = false;
-        statusLine.textContent = 'On-demand usage disabled.';
-        onDemandStatus.textContent = 'On-demand usage is disabled.';
-        renderUsage();
-        return;
-      }
-
-      const tokenRaw = tokenInput.value.trim();
-      const spendRaw = spendInput.value.trim();
-
-      const tokenLimit = Number.parseInt(tokenRaw, 10);
-      if (!Number.isFinite(tokenLimit) || tokenLimit < 1000) {
-        onDemandStatus.textContent = 'Set an extra token limit of at least 1,000.';
-        return;
-      }
-
-      let spendLimit = null;
-      if (spendRaw) {
-        const parsedSpend = Number.parseFloat(spendRaw);
-        if (!Number.isFinite(parsedSpend) || parsedSpend < 0) {
-          onDemandStatus.textContent = 'Spend limit must be 0 or more.';
-          return;
-        }
-        spendLimit = Math.round(parsedSpend * 100) / 100;
-      }
-
-      store.onDemandUsageEnabled = true;
-      store.onDemandTokenLimit = tokenLimit;
-      store.monthlySpendingLimit = spendLimit;
-
-      onDemandStatus.textContent = `On-demand enabled with ${formatTokens(tokenLimit)} extra tokens.`;
-      statusLine.textContent = 'On-demand settings updated.';
-      renderUsage();
-    });
-
-    onDemandBody.append(toggleLabel, inputGrid, saveBtn, onDemandStatus);
-    applyToggleState();
-  }
 }
 
 function ensureBillingDefaults() {
-  if (store.onDemandUsageEnabled == null) {
-    store.onDemandUsageEnabled = false;
-  }
-
-  if (store.onDemandTokenLimit == null) {
-    store.onDemandTokenLimit = 1000000;
-  }
-
   if (store.monthlyTokenUsage == null) {
     const plan = getSelectedPlan();
     const baseTokens = plan ? getPlanTokenQuota(plan.id) : 100000;
@@ -945,9 +821,7 @@ function ensureBillingDefaults() {
 function getBillingUsageSummary() {
   ensureBillingDefaults();
   const selected = getSelectedPlan();
-  const includedTokens = selected ? getPlanTokenQuota(selected.id) : 0;
-  const onDemandTokens = store.onDemandUsageEnabled ? (store.onDemandTokenLimit || 0) : 0;
-  const totalTokens = includedTokens + onDemandTokens;
+  const totalTokens = selected ? getPlanTokenQuota(selected.id) : 0;
   const now = new Date();
   const renewsOn = new Date(now.getFullYear(), now.getMonth() + 1, 1);
 
