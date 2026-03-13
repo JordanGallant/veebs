@@ -1,6 +1,15 @@
 :root {
   --color-fg: #2b2927;
   --color-bg: #c6c6f1;
+  --color-ink-strong: #000;
+  --color-domain-available: #0f0;
+  --color-confirm-bg: #0a0;
+  --color-token-erc: #7c8aff;
+  --color-token-sati: #b98eff;
+  --color-token-x402: #fbbf24;
+  --color-trade-buy: #4ade80;
+  --color-trade-sell: #f87171;
+  --color-trade-transfer: #60a5fa;
   --font: 'IBM Plex Mono', monospace;
   --font-header: 'Stylish', system-ui, sans-serif;
   --font-normal: 400;

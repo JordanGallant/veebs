@@ -47,6 +47,12 @@ function contentTypeFor(filePath) {
   return 'application/octet-stream';
 }
 
+function setNoCacheHeaders(res) {
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
+}
+
 function safeFilePath(pathname) {
   const decoded = decodeURIComponent(pathname);
   const candidate = path.join(ROOT, decoded);
@@ -135,6 +141,7 @@ const server = http.createServer(async (req, res) => {
         }
         res.statusCode = 200;
         res.setHeader('Content-Type', 'text/html; charset=utf-8');
+        setNoCacheHeaders(res);
         res.end(data);
       });
       return;
@@ -148,6 +155,7 @@ const server = http.createServer(async (req, res) => {
       }
       res.statusCode = 200;
       res.setHeader('Content-Type', contentTypeFor(target));
+      setNoCacheHeaders(res);
       res.end(data);
     });
   });

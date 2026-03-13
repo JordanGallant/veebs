@@ -76,7 +76,7 @@ function render(container) {
 
   const panel = el(
     'div',
-    { class: 'overlay-panel overlay-shell verify-panel' },
+    { class: 'overlay-panel overlay-panel--compact overlay-shell verify-panel' },
     heading,
     subtitle,
     codeInput,
@@ -84,8 +84,8 @@ function render(container) {
     resendBtn,
     status,
   );
-  const content = el('div', { class: 'recording-content' }, panel);
-  const wrapper = el('div', { class: 'screen recording-screen' }, content);
+  const content = el('div', { class: 'recording-content screen-content' }, panel);
+  const wrapper = el('div', { class: 'screen recording-screen screen-shell' }, content);
 
   const layer = getAsciiLayer();
   if (layer) {
