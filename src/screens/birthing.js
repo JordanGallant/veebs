@@ -4,8 +4,7 @@ import { store } from '../lib/store.js';
 import { createAsciiCamera } from '../components/ascii-camera.js';
 import { animateTypewriter } from '../lib/typewriter.js';
 import { createCyborgPortraitFromSnapshot } from '../lib/fal-edit.js';
-import { getActiveSessionUser, isEmailVerified, saveProfileImage, generateSoul, updateProfile, loadOnboardingPhoto } from '../lib/api.js';
-import { transcribeAudio } from '../lib/tts-api.js';
+import { getActiveSessionUser, isEmailVerified, saveProfileImage, generateSoul, updateProfile, getProfile, loadOnboardingPhoto } from '../lib/api.js';
 
 const BIRTHING_MESSAGES = [
   'Analyzing voice patterns...',
@@ -131,28 +130,44 @@ async function render(container) {
     status.textContent = BIRTHING_MESSAGES[msgIdx];
   }, 1200);
 
-  // Transcribe voice, then generate soul with transcript; portrait in parallel
+  // Generate portrait and soul in parallel; transcribe audio via backend Whisper
   const portraitPromise = generateAndSavePortrait(status);
 
   const voiceAndSoulPromise = (async () => {
-    let transcript = null;
+    // Generate soul (backend transcribes audio via Whisper if available)
+    const soulData = await generateSoul().catch((err) => {
+      console.warn('Soul generation failed:', err.message);
+      return null;
+    });
+
+    // Save transcript to profile so voice cloning works later
     if (store.audioBlob) {
       try {
-        transcript = await transcribeAudio(store.audioBlob);
-        store.voiceTranscript = transcript;
-        store.voiceRefAudioBlob = store.audioBlob;
-        // Persist transcript to profile
-        await updateProfile({ voice_transcript: transcript }).catch((err) => {
-          console.warn('Could not save voice transcript:', err.message);
-        });
+        const profile = await getProfile();
+        if (!profile?.voice_transcript) {
+          // Use backend Whisper endpoint to transcribe
+          const formData = new FormData();
+          formData.append('file', store.audioBlob, 'recording.webm');
+          const res = await fetch('https://agents.jgsleepy.xyz/api/agents/transcribe', {
+            method: 'POST',
+            body: formData,
+          });
+          if (res.ok) {
+            const { text } = await res.json();
+            if (text) {
+              await updateProfile({ voice_transcript: text });
+              store.voiceTranscript = text;
+              store.voiceRefAudioBlob = store.audioBlob;
+            }
+          }
+        } else {
+          store.voiceTranscript = profile.voice_transcript;
+          store.voiceRefAudioBlob = store.audioBlob;
+        }
       } catch (err) {
         console.warn('Voice transcription failed:', err.message);
       }
     }
-    // Generate soul with transcript (or without if transcription failed)
-    await generateSoul(transcript).catch((err) => {
-      console.warn('Soul generation failed:', err.message);
-    });
   })();
 
   // Wait at least 5.6s for the animation, then wait for all to finish

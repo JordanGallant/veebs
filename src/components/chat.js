@@ -1,7 +1,7 @@
 import { el, on, clear } from '../lib/dom.js';
 import { store } from '../lib/store.js';
 import { sendMessage, getChatHistory, loadVoiceRef, uploadVoiceMemo, getVoiceMemoUrl } from '../lib/api.js';
-import { generateSpeech } from '../lib/tts-api.js';
+import { generateSpeech, checkStatus, loadModel } from '../lib/tts-api.js';
 import { marked } from 'marked';
 
 marked.setOptions({
@@ -23,6 +23,12 @@ async function generateVoiceNote(text, messageId) {
 
   if (!store.voiceRefAudioBlob || !store.voiceTranscript) {
     return null;
+  }
+
+  // Ensure CustomVoice model is loaded for voice cloning
+  const status = await checkStatus();
+  if (!status.model?.includes('CustomVoice')) {
+    await loadModel('Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice');
   }
 
   const wavBlob = await generateSpeech(text, {
