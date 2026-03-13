@@ -70,16 +70,6 @@ function getReturnUrl(req) {
   return `${getOrigin(req)}/?payment=success&session_id={CHECKOUT_SESSION_ID}#pricing`;
 }
 
-function getBrandingSettings() {
-  return {
-    background_color: '#c6c6f1',
-    button_color: '#2b2927',
-    border_style: 'rounded',
-    font_family: 'm_plus_1_code',
-    display_name: 'CyberTwin',
-  };
-}
-
 async function createCheckoutSession(body, req, res) {
   const planId = typeof body?.plan_id === 'string' ? body.plan_id.trim() : '';
   const plan = getPlan(planId);
@@ -100,7 +90,7 @@ async function createCheckoutSession(body, req, res) {
   const userId = typeof body?.user_id === 'string' ? body.user_id.trim() : '';
 
   const session = await stripe.checkout.sessions.create({
-    ui_mode: 'embedded',
+    ui_mode: 'custom',
     mode: plan.mode,
     line_items: [
       {
@@ -108,7 +98,6 @@ async function createCheckoutSession(body, req, res) {
         quantity: 1,
       },
     ],
-    redirect_on_completion: 'always',
     return_url: getReturnUrl(req),
     billing_address_collection: 'auto',
     payment_method_types: ['card'],
@@ -138,7 +127,6 @@ async function createCheckoutSession(body, req, res) {
           },
         }
       : undefined,
-    branding_settings: getBrandingSettings(),
   });
 
   sendJson(res, 200, {
