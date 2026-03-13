@@ -1,6 +1,6 @@
 import { el, on, clear } from '../lib/dom.js';
 import { store } from '../lib/store.js';
-import { sendMessage, getChatHistory, loadVoiceRef, uploadVoiceMemo } from '../lib/api.js';
+import { sendMessage, getChatHistory, loadVoiceRef, uploadVoiceMemo, getVoiceMemoUrl } from '../lib/api.js';
 import { generateSpeech } from '../lib/tts-api.js';
 import { marked } from 'marked';
 
@@ -18,7 +18,7 @@ function getSleepingReplyName() {
   return trimmedName || 'friend';
 }
 
-async function generateVoiceNote(text) {
+async function generateVoiceNote(text, messageId) {
   await loadVoiceRef();
 
   if (!store.voiceRefAudioBlob || !store.voiceTranscript) {
@@ -30,8 +30,8 @@ async function generateVoiceNote(text) {
     refText: store.voiceTranscript,
   });
 
-  // Upload to Supabase in background
-  uploadVoiceMemo(store.agentId, wavBlob).catch((err) => {
+  // Upload to Supabase and link to chat message
+  uploadVoiceMemo(store.agentId, wavBlob, messageId).catch((err) => {
     console.warn('Voice memo upload failed:', err.message);
   });
 
@@ -96,11 +96,14 @@ export function createChat(parent, options = {}) {
     return msgEl;
   }
 
-  function appendVoiceNote(msgEl, audioBlob) {
-    const url = URL.createObjectURL(audioBlob);
+  function appendVoiceNote(msgEl, src) {
+    // src can be a Blob or a URL string
+    const url = src instanceof Blob ? URL.createObjectURL(src) : src;
     const audio = el('audio', { controls: '', class: 'chat-voice-note' });
     audio.src = url;
-    audio.addEventListener('ended', () => URL.revokeObjectURL(url));
+    if (src instanceof Blob) {
+      audio.addEventListener('ended', () => URL.revokeObjectURL(url));
+    }
     msgEl.appendChild(audio);
     log.scrollTop = log.scrollHeight;
   }
@@ -108,7 +111,14 @@ export function createChat(parent, options = {}) {
   function renderMessages() {
     clear(log);
     for (const msg of store.messages) {
-      appendMessage(msg.role, msg.content, msg.extras || {}, false);
+      const msgEl = appendMessage(msg.role, msg.content, msg.extras || {}, false);
+
+      // Render saved voice memos from history
+      if (msg.voice_memo_path) {
+        getVoiceMemoUrl(msg.voice_memo_path).then((url) => {
+          if (url) appendVoiceNote(msgEl, url);
+        });
+      }
     }
     if (hasInitialScroll) {
       log.scrollTop = initialScrollTop;
@@ -154,7 +164,7 @@ export function createChat(parent, options = {}) {
 
       // Generate voice note when backend flags voice_reply
       if (data.voice_reply && reply && !reply.startsWith('Error:')) {
-        generateVoiceNote(reply)
+        generateVoiceNote(reply, data.message_id)
           .then((blob) => {
             if (blob) appendVoiceNote(msgEl, blob);
           })
@@ -188,6 +198,7 @@ export function createChat(parent, options = {}) {
           store.messages = messages.map((m) => ({
             role: m.role === 'assistant' ? 'twin' : m.role,
             content: m.content,
+            voice_memo_path: m.voice_memo_path || null,
           }));
           renderMessages();
         }

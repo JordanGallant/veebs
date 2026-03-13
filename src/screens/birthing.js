@@ -4,7 +4,7 @@ import { store } from '../lib/store.js';
 import { createAsciiCamera } from '../components/ascii-camera.js';
 import { animateTypewriter } from '../lib/typewriter.js';
 import { createCyborgPortraitFromSnapshot } from '../lib/fal-edit.js';
-import { getActiveSessionUser, isEmailVerified, saveProfileImage, generateSoul, updateProfile } from '../lib/api.js';
+import { getActiveSessionUser, isEmailVerified, saveProfileImage, generateSoul, updateProfile, loadOnboardingPhoto } from '../lib/api.js';
 import { transcribeAudio } from '../lib/tts-api.js';
 
 const BIRTHING_MESSAGES = [
@@ -46,8 +46,11 @@ export function registerBirthing() {
 }
 
 async function generateAndSavePortrait(status) {
-  // Use the photo taken during recording
-  const photoBlob = store.photoBlob;
+  // Use the photo taken during recording, or fetch from Supabase if cleared
+  let photoBlob = store.photoBlob;
+  if (!photoBlob) {
+    photoBlob = await loadOnboardingPhoto();
+  }
   if (!photoBlob) return;
 
   try {

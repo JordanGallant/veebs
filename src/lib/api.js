@@ -359,7 +359,11 @@ export async function sendMessage(message) {
   });
 
   // Backend already saves messages to Supabase
-  return { response: data.response || "I'm not sure how to respond to that." };
+  return {
+    response: data.response || "I'm not sure how to respond to that.",
+    message_id: data.message_id || null,
+    voice_reply: data.voice_reply || false,
+  };
 }
 
 export async function getChatHistory() {
@@ -643,6 +647,22 @@ export async function speakText(text) {
   return data;
 }
 
+export async function loadOnboardingPhoto() {
+  if (!store.user) return null;
+  const { data: files, error: listError } = await supabase.storage
+    .from(ONBOARDING_PHOTO_BUCKET)
+    .list(store.user.id, { limit: 1 });
+  if (listError || !files || files.length === 0) return null;
+
+  const { data: blob, error: dlError } = await supabase.storage
+    .from(ONBOARDING_PHOTO_BUCKET)
+    .download(`${store.user.id}/${files[0].name}`);
+  if (dlError) return null;
+
+  store.photoBlob = blob;
+  return blob;
+}
+
 export async function loadVoiceRef() {
   // Already cached — no-op
   if (store.voiceRefAudioBlob && store.voiceTranscript) return;
@@ -672,17 +692,30 @@ export async function loadVoiceRef() {
   }
 }
 
-export async function uploadVoiceMemo(agentId, audioBlob) {
+export async function uploadVoiceMemo(agentId, audioBlob, messageId) {
   const path = `${store.user.id}/${agentId}/${Date.now()}.wav`;
   const { error } = await supabase.storage
     .from(VOICE_MEMOS_BUCKET)
     .upload(path, audioBlob, { contentType: 'audio/wav', upsert: false });
   if (error) throw new Error(error.message);
 
-  const { data: signed, error: signedError } = await supabase.storage
+  // Link voice memo to chat message
+  if (messageId) {
+    await supabase
+      .from('chat_messages')
+      .update({ voice_memo_path: path })
+      .eq('id', messageId);
+  }
+
+  return path;
+}
+
+export async function getVoiceMemoUrl(path) {
+  if (!path) return null;
+  const { data: signed, error } = await supabase.storage
     .from(VOICE_MEMOS_BUCKET)
     .createSignedUrl(path, 60 * 60);
-  if (signedError) throw new Error(signedError.message);
+  if (error) return null;
   return signed?.signedUrl || null;
 }
 
