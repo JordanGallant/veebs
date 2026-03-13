@@ -54,6 +54,32 @@ function sendJson(res, statusCode, payload) {
   res.end(JSON.stringify(payload));
 }
 
+function parseBody(req) {
+  if (!req.body) return {};
+
+  if (Buffer.isBuffer(req.body)) {
+    try {
+      return JSON.parse(req.body.toString('utf8'));
+    } catch {
+      return {};
+    }
+  }
+
+  if (typeof req.body === 'string') {
+    try {
+      return JSON.parse(req.body);
+    } catch {
+      return {};
+    }
+  }
+
+  if (typeof req.body === 'object') {
+    return req.body;
+  }
+
+  return {};
+}
+
 function getPlan(planId) {
   return PLAN_CATALOG[planId] || null;
 }
@@ -159,9 +185,7 @@ async function retrieveCheckoutSession(sessionId, res) {
 async function stripeCheckoutHandler(req, res) {
   try {
     if (req.method === 'POST') {
-      const body = typeof req.body === 'string' && req.body
-        ? JSON.parse(req.body)
-        : {};
+      const body = parseBody(req);
       await createCheckoutSession(body, req, res);
       return;
     }
