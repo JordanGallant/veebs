@@ -80,19 +80,13 @@ function render(container) {
   const promptWrap = el('div', { class: 'recording-help-wrap help-wrap', id: 'recording-help' }, promptBody);
   const headingRow = el('div', { class: 'recording-heading-row' }, heading, helpToggle);
   const ownerField = el('div', { class: 'recording-owner-field' });
-  const ownerLabel = el('label', { class: 'bold', for: 'recording-owner-reference-name' }, 'How should your twin call you?');
-  const ownerHint = el(
-    'p',
-    { class: 'secondary text-sm' },
-    'This is used in shared messages and can be changed later in settings.',
-  );
   const ownerInput = el('input', {
     id: 'recording-owner-reference-name',
     class: 'input question-input',
     type: 'text',
     value: store.ownerReferenceName || '',
   });
-  ownerField.append(ownerLabel, ownerHint, ownerInput);
+  ownerField.append(ownerInput);
 
   const recDot = el('span', { class: 'rec-dot', style: 'display:none' });
   const timerEl = el('span', { class: 'rec-timer' }, '00:00');
@@ -253,7 +247,7 @@ function render(container) {
 
   window.requestAnimationFrame(() => {
     recordingPanel.classList.add('is-visible');
-    typeQuestionHeading('How should your twin call you?', false);
+    typeQuestionHeading('What\'s your name?', false);
     ownerInput.focus();
   });
 }

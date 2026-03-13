@@ -147,14 +147,14 @@ function render(container) {
   function showOwnerStep() {
     ownerStepComplete = false;
     questionIdx = -1;
-    inputLabel.textContent = 'How should your twin call you?';
+    inputLabel.textContent = 'What\'s your name?';
     inputLabel.setAttribute('for', 'questions-owner-reference-name');
     inputLabel.style.display = '';
     ownerInput.style.display = '';
     input.style.display = 'none';
     fieldStatus.textContent = '';
     ownerInput.focus();
-    typeHeading('How should your twin call you?', true);
+    typeHeading('What\'s your name?', true);
     flowBtn.textContent = 'Continue';
   }
 

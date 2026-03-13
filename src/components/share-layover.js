@@ -286,12 +286,7 @@ export function openShareLayover(parent, {
 
   function renderOwnerView() {
     const field = el('div', { class: 'share-sheet__field' });
-    const label = el('label', { class: 'bold', for: 'share-owner-name' }, 'How should your twin call you?');
-    const hint = el(
-      'p',
-      { class: 'secondary text-sm' },
-      'This is used in shared messages and can be changed later in settings.',
-    );
+    const label = el('label', { class: 'bold', for: 'share-owner-name' }, 'What\'s your name?');
     const input = el('input', {
       id: 'share-owner-name',
       class: 'input share-sheet__input',
@@ -317,7 +312,7 @@ export function openShareLayover(parent, {
     });
     on(saveBtn, 'click', handleOwnerSave);
 
-    field.append(label, hint, input);
+    field.append(label, input);
     actions.appendChild(saveBtn);
     body.append(field, actions);
     focusTarget = input;
