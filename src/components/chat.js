@@ -162,8 +162,8 @@ export function createChat(parent, options = {}) {
       if (typing.parentNode) typing.parentNode.removeChild(typing);
       const msgEl = appendMessage('twin', reply, extras);
 
-      // Generate voice note for agent replies
-      if (reply && !reply.startsWith('Error:')) {
+      // Generate voice note when backend flags voice_reply
+      if (data.voice_reply && reply && !reply.startsWith('Error:')) {
         generateVoiceNote(reply, data.message_id)
           .then((blob) => {
             if (blob) appendVoiceNote(msgEl, blob);
