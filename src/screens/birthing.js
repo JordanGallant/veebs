@@ -75,23 +75,25 @@ async function generateAndSavePortrait(status) {
 }
 
 async function render(container) {
+  console.log('[Birthing] pendingTwinBirth:', store.pendingTwinBirth, 'agentId:', store.agentId);
   if (!store.pendingTwinBirth) {
+    console.log('[Birthing] No pendingTwinBirth — redirecting to welcome');
     navigate('welcome');
     return;
   }
   const sessionUser = await getActiveSessionUser();
   if (!sessionUser) {
+    console.log('[Birthing] No session — redirecting to auth');
     navigate('auth');
     return;
   }
-  if (!isEmailVerified(sessionUser)) {
-    navigate('verify-email');
-    return;
-  }
+  // Email verification disabled for hackathon
   if (!store.agentId) {
-    navigate('pricing');
+    console.log('[Birthing] No agentId — redirecting to dashboard');
+    navigate('dashboard');
     return;
   }
+  console.log('[Birthing] Starting birthing flow for agent:', store.agentId);
 
   cam = createAsciiCamera({
     transitionBodyTime: store.asciiTransitionBodyTime,
@@ -130,50 +132,142 @@ async function render(container) {
     status.textContent = BIRTHING_MESSAGES[msgIdx];
   }, 1200);
 
-  // Generate portrait and soul in parallel; transcribe audio via backend Whisper
+  // Step 1: Generate cyborg portrait
   const portraitPromise = generateAndSavePortrait(status);
 
-  const voiceAndSoulPromise = (async () => {
-    // Generate soul (backend transcribes audio via Whisper if available)
-    const soulData = await generateSoul().catch((err) => {
-      console.warn('Soul generation failed:', err.message);
-      return null;
-    });
-
-    // Save transcript to profile so voice cloning works later
+  // Step 2: Transcribe audio + generate soul (all via fal.ai)
+  const soulPromise = (async () => {
     if (store.audioBlob) {
-      try {
-        const profile = await getProfile();
-        if (!profile?.voice_transcript) {
-          // Use backend Whisper endpoint to transcribe
-          const formData = new FormData();
-          formData.append('file', store.audioBlob, 'recording.webm');
-          const res = await fetch('https://agents.jgsleepy.xyz/api/agents/transcribe', {
-            method: 'POST',
-            body: formData,
-          });
-          if (res.ok) {
-            const { text } = await res.json();
-            if (text) {
-              await updateProfile({ voice_transcript: text });
-              store.voiceTranscript = text;
-              store.voiceRefAudioBlob = store.audioBlob;
-            }
-          }
-        } else {
-          store.voiceTranscript = profile.voice_transcript;
-          store.voiceRefAudioBlob = store.audioBlob;
-        }
-      } catch (err) {
-        console.warn('Voice transcription failed:', err.message);
+      store.voiceRefAudioBlob = store.audioBlob;
+    }
+
+    try {
+      // Save onboarding answers first
+      if (store.characterProfile) {
+        await updateProfile({ onboarding_character_profile: store.characterProfile });
       }
+    } catch (err) {
+      console.warn('Profile update failed:', err.message);
+    }
+
+    // Generate soul via local API (transcribes audio via fal Whisper + builds personality)
+    try {
+      const { supabase } = await import('../lib/supabase.js');
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token;
+
+      if (store.agentId && token) {
+        status.textContent = 'Transcribing voice & generating soul...';
+        const soulRes = await fetch('/api/generate-soul', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`,
+          },
+          body: JSON.stringify({ agentId: store.agentId }),
+        });
+
+        if (soulRes.ok) {
+          const soulData = await soulRes.json();
+          if (soulData.personality) {
+            store.characterProfile = soulData.personality;
+          }
+          if (soulData.transcript) {
+            store.voiceTranscript = soulData.transcript;
+          }
+        }
+      }
+    } catch (err) {
+      console.warn('Soul generation failed:', err.message);
     }
   })();
 
-  // Wait at least 5.6s for the animation, then wait for all to finish
+  // Wait for portrait + profile, then generate video
   const minWait = new Promise((r) => setTimeout(r, 5600));
 
-  Promise.all([minWait, portraitPromise, voiceAndSoulPromise]).then(() => {
+  Promise.all([minWait, portraitPromise, soulPromise]).then(async () => {
+    // Step 3: Generate lip-synced video from portrait + voice
+    status.textContent = 'Generating your twin video...';
+    try {
+      const session = await import('@supabase/supabase-js').then(() => {
+        // Get auth token for API call
+        return null; // We'll get it from supabase below
+      }).catch(() => null);
+
+      const { supabase } = await import('../lib/supabase.js');
+      const { data: { session: authSession } } = await supabase.auth.getSession();
+      const token = authSession?.access_token;
+
+      if (store.agentId && token) {
+        // Build a script from personality or use default intro
+        let script;
+        const personality = store.characterProfile || '';
+        // Strip markdown headers/formatting for speech
+        const cleanPersonality = personality
+          .replace(/^#+\s.*/gm, '')
+          .replace(/\*\*/g, '')
+          .replace(/[#*_~`]/g, '')
+          .replace(/\n{2,}/g, ' ')
+          .trim();
+
+        if (cleanPersonality.length > 50) {
+          script = `Hello, I am ${store.name || 'your CyberTwin'}. ${cleanPersonality.slice(0, 400)}`;
+        } else {
+          script = `Hello everyone, I am ${store.name || 'your CyberTwin'}, a digital replica created to represent my human. Nice to meet you all!`;
+        }
+
+        status.textContent = 'Generating lip-synced video... (this takes ~60s)';
+
+        const videoRes = await fetch('/api/generate-video', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            agentId: store.agentId,
+            script,
+            resolution: '480p',
+          }),
+        });
+
+        if (videoRes.ok) {
+          const videoData = await videoRes.json();
+          store.twinVideoUrl = videoData.video_signed_url || videoData.video_url;
+          status.textContent = 'Twin video ready!';
+
+          // Try to start virtual camera if server is running
+          try {
+            const camHealth = await fetch('http://127.0.0.1:9999/health', {
+              signal: AbortSignal.timeout(1000),
+            });
+            if (camHealth.ok) {
+              status.textContent = 'Starting virtual camera...';
+              await fetch('http://127.0.0.1:9999/start', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ video_url: videoData.video_url }),
+              });
+              status.textContent = 'Virtual camera streaming!';
+            }
+          } catch {
+            // Virtual camera server not running — that's fine
+            console.log('Virtual camera server not running — skip auto-start');
+          }
+        } else {
+          const err = await videoRes.json().catch(() => ({}));
+          console.error('Video generation failed:', JSON.stringify(err));
+          status.textContent = `Video failed: ${err.error || videoRes.status}`;
+          // Wait 3s so user can see the error
+          await new Promise((r) => setTimeout(r, 3000));
+        }
+      }
+    } catch (err) {
+      console.warn('Video generation error:', err.message);
+      status.textContent = 'Continuing to dashboard...';
+    }
+
+    // Navigate to dashboard
     clearInterval(msgTimer);
     panel.classList.remove('is-visible');
     panel.classList.add('is-exiting');

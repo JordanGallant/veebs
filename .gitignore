@@ -5,3 +5,9 @@ uploads/
 .env
 .env.*
 !.env.example
+.google-session/
+VBCABLE_Driver_Pack45/
+VBCABLE_Driver_Pack45.zip
+api/*.wav
+__pycache__/
+agents-demo/

@@ -125,7 +125,7 @@ function render(container) {
       panel.classList.add('is-exiting');
       navTimer = window.setTimeout(() => {
         store.asciiTransitionBodyTime = cam ? cam.captureBodyVideoTime() : null;
-        navigate('pricing');
+        navigate('birthing');
       }, 420);
     } catch (err) {
       confirmBtn.removeAttribute('disabled');

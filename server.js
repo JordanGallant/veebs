@@ -6,6 +6,11 @@ const falEditHandler = require('./api/fal-edit.js');
 const storeProfileImageHandler = require('./api/store-profile-image.js');
 const shareCardsHandler = require('./api/share-cards.js');
 const stripeCheckoutHandler = require('./api/stripe-checkout.js');
+const generateVideoHandler = require('./api/generate-video.js');
+const joinMeetingHandler = require('./api/join-meeting.js');
+const generateSoulHandler = require('./api/generate-soul.js');
+const generateScriptHandler = require('./api/generate-script.js');
+const startCameraHandler = require('./api/start-camera.js');
 
 const ROOT = __dirname;
 const PORT = Number(process.env.PORT || 3000);
@@ -114,6 +119,66 @@ const server = http.createServer(async (req, res) => {
         await readRequestBody(req);
       }
       await stripeCheckoutHandler(req, res);
+    } catch {
+      res.statusCode = 500;
+      res.setHeader('Content-Type', 'application/json');
+      res.end(JSON.stringify({ error: 'Unexpected server error.' }));
+    }
+    return;
+  }
+
+  if (reqUrl.pathname === '/api/generate-video') {
+    try {
+      await readRequestBody(req);
+      await generateVideoHandler(req, res);
+    } catch {
+      res.statusCode = 500;
+      res.setHeader('Content-Type', 'application/json');
+      res.end(JSON.stringify({ error: 'Unexpected server error.' }));
+    }
+    return;
+  }
+
+  if (reqUrl.pathname === '/api/join-meeting') {
+    try {
+      await readRequestBody(req);
+      await joinMeetingHandler(req, res);
+    } catch {
+      res.statusCode = 500;
+      res.setHeader('Content-Type', 'application/json');
+      res.end(JSON.stringify({ error: 'Unexpected server error.' }));
+    }
+    return;
+  }
+
+  if (reqUrl.pathname === '/api/generate-soul') {
+    try {
+      await readRequestBody(req);
+      await generateSoulHandler(req, res);
+    } catch {
+      res.statusCode = 500;
+      res.setHeader('Content-Type', 'application/json');
+      res.end(JSON.stringify({ error: 'Unexpected server error.' }));
+    }
+    return;
+  }
+
+  if (reqUrl.pathname === '/api/generate-script') {
+    try {
+      await readRequestBody(req);
+      await generateScriptHandler(req, res);
+    } catch {
+      res.statusCode = 500;
+      res.setHeader('Content-Type', 'application/json');
+      res.end(JSON.stringify({ error: 'Unexpected server error.' }));
+    }
+    return;
+  }
+
+  if (reqUrl.pathname === '/api/start-camera') {
+    try {
+      await readRequestBody(req);
+      await startCameraHandler(req, res);
     } catch {
       res.statusCode = 500;
       res.setHeader('Content-Type', 'application/json');

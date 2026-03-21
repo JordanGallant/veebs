@@ -152,23 +152,17 @@ function render(container) {
           await syncOnboardingData();
         }
       } else {
-        const signUp = await register(email, password, displayName || 'CyberTwin User');
-        needsEmailConfirmation = Boolean(signUp?.needsEmailConfirmation);
-        if (!needsEmailConfirmation) {
-          throw new Error('Enable email confirmation in Supabase Auth and send the signup template as a code.');
-        }
+        await register(email, password, displayName || 'CyberTwin User');
+      }
 
-        const twinName = displayName || store.pendingSignupName || 'My Twin';
-        store.name = twinName;
-        savePendingSignup(email, twinName);
-        status.textContent = 'We sent an 8-digit code to your email.';
-        panel.classList.remove('is-visible');
-        panel.classList.add('is-exiting');
-        exitTimer = window.setTimeout(() => {
-          store.asciiTransitionBodyTime = cam ? cam.captureBodyVideoTime() : null;
-          navigate('verify-email');
-        }, 420);
-        return;
+      // Sync onboarding data (uploads photo + audio to Supabase)
+      status.textContent = 'Uploading your data...';
+      if (hasOnboardingData()) {
+        try {
+          await syncOnboardingData();
+        } catch (err) {
+          console.warn('Onboarding sync failed:', err.message);
+        }
       }
 
       status.textContent = 'Setting up your twin...';
@@ -198,17 +192,12 @@ function render(container) {
       }
 
       status.textContent = 'Success! Redirecting...';
+      store.pendingTwinBirth = true;
       panel.classList.remove('is-visible');
       panel.classList.add('is-exiting');
       exitTimer = window.setTimeout(() => {
         store.asciiTransitionBodyTime = cam ? cam.captureBodyVideoTime() : null;
-        if (store.pendingTwinBirth) {
-          navigate('birthing');
-        } else if (shouldContinueOnboarding()) {
-          navigate('pricing');
-        } else {
-          navigate('dashboard');
-        }
+        navigate('birthing');
       }, 420);
     } catch (err) {
       submitBtn.removeAttribute('disabled');

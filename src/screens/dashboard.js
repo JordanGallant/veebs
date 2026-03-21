@@ -9,20 +9,18 @@ import {
   saveAgentName,
   saveAgentCharacterProfile,
   saveOwnerReferenceName,
-  startAgent,
-  stopAgent,
-  generateSoul,
 } from '../lib/api.js';
 import { PLAN_OPTIONS, applyPlanSelection, getPlanById } from '../lib/plans.js';
 import { createChat } from '../components/chat.js';
 import { createCharacter } from '../components/character.js';
-import { createWallet } from '../components/wallet.js';
+// wallet removed for hackathon
 import { openShareLayover } from '../components/share-layover.js';
 import { animateTypewriter } from '../lib/typewriter.js';
 
 const GENERIC_DISPLAY_NAME = 'CyberTwin User';
 
 const TAB_LABELS = {
+  welcome: 'Welcome',
   chat: 'Chat',
   wallet: 'Wallet',
 };
@@ -56,14 +54,7 @@ async function render(container) {
     return;
   }
 
-  if (!isEmailVerified(sessionUser)) {
-    savePendingSignup(
-      sessionUser.email || store.pendingSignupEmail,
-      store.pendingSignupName || store.name || sessionUser.user_metadata?.display_name || 'My Twin',
-    );
-    navigate('verify-email');
-    return;
-  }
+  // Email verification disabled for hackathon
 
   if (profileImageUrl) {
     URL.revokeObjectURL(profileImageUrl);
@@ -74,10 +65,6 @@ async function render(container) {
     class: 'dashboard-title',
     'aria-label': 'Twin name',
   });
-
-  function isTwinAwake() {
-    return store.agentState === 'running';
-  }
 
   const profileImage = el('img', {
     class: 'profile-image',
@@ -91,43 +78,6 @@ async function render(container) {
     decoding: 'async',
   });
   const statusRow = el('div', { class: 'agent-status-row' }, nameTitle);
-  const brainBtnLabel = el('span', { class: 'dashboard-control-label' }, isTwinAwake() ? 'On' : 'Off');
-
-  const brainBtn = el('button', {
-    class: isTwinAwake() ? 'dashboard-control brain-toggle brain-toggle--active' : 'dashboard-control brain-toggle',
-    type: 'button',
-    role: 'switch',
-    'aria-checked': String(isTwinAwake()),
-    'aria-label': isTwinAwake() ? 'Twin is awake. Activate to let it sleep.' : 'Twin is asleep. Activate to wake it.',
-    title: isTwinAwake() ? 'Let twin sleep' : 'Wake twin',
-  },
-  brainBtnLabel,
-  el('span', { class: 'brain-toggle__track', 'aria-hidden': 'true' }, el('span', { class: 'brain-toggle__thumb' })),
-  );
-
-  on(brainBtn, 'click', async () => {
-    brainBtn.setAttribute('disabled', '');
-    try {
-      if (isTwinAwake()) {
-        await stopAgent();
-      } else {
-        await startAgent();
-      }
-      updateBrainUI();
-    } catch (err) {
-      shareStatus.textContent = err.message;
-    }
-    brainBtn.removeAttribute('disabled');
-  });
-
-  function updateBrainUI() {
-    const awake = isTwinAwake();
-    brainBtn.className = awake ? 'dashboard-control brain-toggle brain-toggle--active' : 'dashboard-control brain-toggle';
-    brainBtnLabel.textContent = awake ? 'On' : 'Off';
-    brainBtn.setAttribute('aria-checked', String(awake));
-    brainBtn.setAttribute('aria-label', awake ? 'Twin is awake. Activate to let it sleep.' : 'Twin is asleep. Activate to wake it.');
-    brainBtn.title = awake ? 'Let twin sleep' : 'Wake twin';
-  }
 
   const shareBtn = el('button', {
     class: 'dashboard-control dashboard-share-btn',
@@ -140,8 +90,220 @@ async function render(container) {
     'aria-live': 'polite',
   });
 
+  // ── Join Meeting panel ──
+  const meetingInput = el('input', {
+    class: 'input',
+    type: 'url',
+    placeholder: 'Paste meeting link (Google Meet, Zoom...)',
+    style: 'width:100%; margin-bottom:8px;',
+  });
+
+  const scriptLabel = el('div', { style: 'display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;' },
+    el('span', { class: 'secondary text-sm' }, 'Script'),
+  );
+
+  const contextInput = el('input', {
+    class: 'input',
+    type: 'text',
+    placeholder: 'Meeting context (e.g. "team standup", "investor pitch")',
+    style: 'width:100%; margin-bottom:8px;',
+  });
+
+  const generateScriptBtn = el('button', {
+    class: 'btn btn--secondary',
+    type: 'button',
+    style: 'width:100%; margin-bottom:8px;',
+  }, 'Generate Script');
+
+  const scriptInput = el('textarea', {
+    class: 'input',
+    placeholder: 'What should your twin say?',
+    rows: '4',
+    style: 'width:100%; margin-bottom:8px; resize:vertical; font-family:inherit;',
+  });
+  scriptInput.value = `Hello everyone, I am ${store.name || 'a CyberTwin'}, nice to meet you all!`;
+
+  on(generateScriptBtn, 'click', async () => {
+    generateScriptBtn.setAttribute('disabled', '');
+    generateScriptBtn.textContent = 'Generating...';
+    meetingStatus.textContent = '';
+
+    try {
+      const { supabase } = await import('../lib/supabase.js');
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token;
+
+      if (!token || !store.agentId) {
+        meetingStatus.textContent = 'Not signed in.';
+        generateScriptBtn.removeAttribute('disabled');
+        generateScriptBtn.textContent = 'Generate Script';
+        return;
+      }
+
+      const res = await fetch('/api/generate-script', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          agentId: store.agentId,
+          context: contextInput.value.trim() || undefined,
+          duration: 'medium',
+        }),
+      });
+
+      const data = await res.json();
+
+      if (res.ok && data.script) {
+        scriptInput.value = data.script;
+        meetingStatus.textContent = `Script generated (${data.word_count} words)`;
+      } else {
+        meetingStatus.textContent = data.error || 'Script generation failed.';
+      }
+    } catch (err) {
+      meetingStatus.textContent = err.message || 'Script generation failed.';
+    }
+
+    generateScriptBtn.removeAttribute('disabled');
+    generateScriptBtn.textContent = 'Generate Script';
+  });
+
+  const createMeetingBtn = el('button', {
+    class: 'btn btn--secondary',
+    type: 'button',
+    style: 'width:100%; margin-bottom:8px;',
+  }, 'Create Meeting');
+
+  const joinSubmitBtn = el('button', {
+    class: 'btn btn--secondary',
+    type: 'button',
+    style: 'width:100%; margin-bottom:8px;',
+  }, 'Join with Link');
+
+  const speakBtn = el('button', {
+    class: 'btn btn--secondary',
+    type: 'button',
+    style: 'width:100%; display:none;',
+  }, 'Speak Now');
+
+  const meetingStatus = el('p', {
+    class: 'secondary text-sm',
+    'aria-live': 'polite',
+    style: 'margin-top:4px;',
+  });
+
+  const meetingPanel = el('div', {
+    class: 'meeting-panel',
+    style: 'padding:12px; border:1px solid rgba(255,255,255,0.1); border-radius:8px; margin-top:12px;',
+  },
+    el('p', { class: 'bold', style: 'margin-bottom:8px;' }, 'Join Meeting'),
+    meetingInput,
+    joinSubmitBtn,
+    speakBtn,
+    meetingStatus,
+  );
+
+  on(speakBtn, 'click', async () => {
+    speakBtn.setAttribute('disabled', '');
+    meetingStatus.textContent = 'Twin is speaking...';
+    try {
+      await fetch('http://127.0.0.1:9999/play', { method: 'POST' });
+      meetingStatus.textContent = 'Twin is speaking! Will return to idle when done.';
+    } catch {
+      meetingStatus.textContent = 'Could not trigger playback.';
+    }
+    speakBtn.removeAttribute('disabled');
+  });
+
+  on(createMeetingBtn, 'click', async () => {
+    createMeetingBtn.setAttribute('disabled', '');
+    meetingStatus.textContent = 'Creating meeting + starting camera...';
+
+    try {
+      const res = await fetch('/api/start-camera', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ createMeeting: true }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        meetingStatus.textContent = data.error || 'Failed.';
+        if (data.hint) meetingStatus.textContent += ' ' + data.hint;
+        createMeetingBtn.removeAttribute('disabled');
+        return;
+      }
+
+      if (data.meeting_url) {
+        meetingInput.value = data.meeting_url;
+        meetingStatus.textContent = `Meeting created! Share this link: ${data.meeting_url}`;
+      }
+
+      speakBtn.style.display = '';
+      meetingStatus.textContent += '\nClick "Speak Now" when ready.';
+    } catch (err) {
+      meetingStatus.textContent = err.message || 'Failed to create meeting.';
+    }
+
+    createMeetingBtn.removeAttribute('disabled');
+  });
+
+  on(joinSubmitBtn, 'click', async () => {
+    const meetingUrl = meetingInput.value.trim();
+    if (!meetingUrl) {
+      meetingStatus.textContent = 'Paste a meeting link first.';
+      return;
+    }
+
+    joinSubmitBtn.setAttribute('disabled', '');
+    meetingStatus.textContent = 'Generating script...';
+
+    try {
+      const { supabase } = await import('../lib/supabase.js');
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token;
+
+      if (!token || !store.agentId) {
+        meetingStatus.textContent = 'Not signed in or no agent found.';
+        joinSubmitBtn.removeAttribute('disabled');
+        return;
+      }
+
+      meetingStatus.textContent = 'Starting virtual camera...';
+
+      const res = await fetch('/api/start-camera', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ meetingUrl }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        meetingStatus.textContent = data.error || 'Failed to start camera.';
+        if (data.hint) meetingStatus.textContent += ' ' + data.hint;
+        joinSubmitBtn.removeAttribute('disabled');
+        return;
+      }
+
+      // Open meeting in new tab
+      window.open(data.meeting_url, '_blank');
+
+      // Show speak button
+      speakBtn.style.display = '';
+      joinSubmitBtn.textContent = 'Rejoin';
+      meetingStatus.textContent = 'Select "OBS Virtual Camera" in meeting. Click "Speak Now" when ready.';
+    } catch (err) {
+      meetingStatus.textContent = err.message || 'Something went wrong.';
+    }
+
+    joinSubmitBtn.removeAttribute('disabled');
+  });
+
   const headerIdentity = el('div', { class: 'dashboard-header-identity' }, profileImage, statusRow);
-  const headerActions = el('div', { class: 'dashboard-header-actions' }, brainBtn, shareBtn);
+  const headerActions = el('div', { class: 'dashboard-header-actions' }, shareBtn);
   const headerTopRow = el('div', { class: 'dashboard-header-toprow' }, headerIdentity, headerActions);
   const headerCopy = el('div', { class: 'dashboard-header-copy' }, headerTopRow, shareStatus);
 
@@ -162,8 +324,8 @@ async function render(container) {
   const tabBar = el('div', { class: 'tabs' });
   const tabContent = el('div', { class: 'tab-content dashboard-tab-content' });
 
-  const tabs = ['chat', 'wallet'];
-  let activeTab = 'wallet';
+  const tabs = ['welcome', 'chat', 'wallet'];
+  let activeTab = 'welcome';
   let settingsOpen = false;
   let profileExpanded = false;
   const scrollPositions = {
@@ -353,13 +515,16 @@ async function render(container) {
       createSettings(tabContent, { updateDisplayedName });
     } else {
       switch (activeTab) {
+        case 'welcome':
+          createWelcomeTab(tabContent);
+          break;
         case 'chat': {
           const chat = createChat(tabContent, { initialScrollTop: scrollPositions.chat });
           panelScroller = chat.scrollEl;
           break;
         }
         case 'wallet':
-          createWallet(tabContent);
+          createSolanaWalletTab(tabContent);
           break;
       }
     }
@@ -375,11 +540,9 @@ async function render(container) {
     bindProfileScrollWatcher(activePanelScroller);
   }
 
-  const dashboardChrome = el('div', { class: 'dashboard-chrome' }, header, profilePanel, tabBar);
+  const dashboardChrome = el('div', { class: 'dashboard-chrome' }, header, profilePanel, meetingPanel, tabBar);
   const dashboard = el('div', { class: 'dashboard' }, dashboardChrome, tabContent);
   container.appendChild(dashboard);
-
-  updateBrainUI();
 
   on(dashboard, 'wheel', handleProfileWheelCollapse);
   on(dashboard, 'touchstart', handleProfileTouchStart);
@@ -405,6 +568,116 @@ async function render(container) {
       }
     }).catch(() => {});
   }
+}
+
+function createWelcomeTab(parent) {
+  const wrapper = el('div', { class: 'welcome-tab', style: 'padding:16px;' });
+
+  const video = el('video', {
+    style: 'width:100%; border-radius:12px; background:#000;',
+    controls: '',
+    autoplay: '',
+    playsinline: '',
+  });
+
+  const loading = el('p', { class: 'secondary', style: 'text-align:center; padding:32px 0;' }, 'Loading twin video...');
+  wrapper.appendChild(loading);
+
+  // Load video from Supabase
+  (async () => {
+    try {
+      const { supabase } = await import('../lib/supabase.js');
+      const { data } = await supabase
+        .from('agents')
+        .select('video_url, personality')
+        .eq('id', store.agentId)
+        .single();
+
+      if (data?.video_url) {
+        video.src = data.video_url;
+        wrapper.replaceChild(video, loading);
+      } else {
+        loading.textContent = 'No video yet. Complete onboarding to generate your twin video.';
+      }
+
+      // Show personality below video
+      if (data?.personality) {
+        const soulText = data.personality
+          .replace(/^#+\s.*/gm, '')
+          .replace(/\*\*/g, '')
+          .replace(/[#*_~`]/g, '')
+          .replace(/\n{3,}/g, '\n\n')
+          .trim();
+        if (soulText) {
+          const soulSection = el('div', { style: 'margin-top:16px;' },
+            el('p', { class: 'bold', style: 'margin-bottom:8px;' }, 'Soul'),
+            el('p', { class: 'secondary', style: 'white-space:pre-wrap; font-size:13px; line-height:1.5;' }, soulText.slice(0, 600) + (soulText.length > 600 ? '...' : '')),
+          );
+          wrapper.appendChild(soulSection);
+        }
+      }
+    } catch (err) {
+      loading.textContent = 'Could not load video.';
+    }
+  })();
+
+  parent.appendChild(wrapper);
+}
+
+function createSolanaWalletTab(parent) {
+  const wrapper = el('div', { class: 'wallet-tab', style: 'padding:16px;' });
+
+  const loading = el('p', { class: 'secondary' }, 'Loading wallet...');
+  wrapper.appendChild(loading);
+
+  (async () => {
+    try {
+      const { supabase } = await import('../lib/supabase.js');
+      const { data } = await supabase
+        .from('agents')
+        .select('solana_address')
+        .eq('id', store.agentId)
+        .single();
+
+      const addr = data?.solana_address;
+      if (!addr) {
+        loading.textContent = 'No wallet connected.';
+        return;
+      }
+
+      const addrShort = addr.slice(0, 8) + '...' + addr.slice(-8);
+      const explorerUrl = `https://explorer.solana.com/address/${addr}?cluster=devnet`;
+
+      const walletCard = el('div', { style: 'background:rgba(255,255,255,0.05); border-radius:12px; padding:16px;' },
+        el('p', { class: 'bold', style: 'margin-bottom:8px;' }, 'Solana Wallet'),
+        el('div', { style: 'display:flex; align-items:center; gap:8px;' },
+          el('code', { style: 'font-size:13px; color:#a78bfa; word-break:break-all;' }, addr),
+        ),
+        el('div', { style: 'margin-top:12px; display:flex; gap:8px;' },
+          (() => {
+            const copyBtn = el('button', { class: 'btn btn--secondary', type: 'button', style: 'font-size:12px;' }, 'Copy');
+            on(copyBtn, 'click', () => {
+              navigator.clipboard.writeText(addr).then(() => { copyBtn.textContent = 'Copied!'; setTimeout(() => { copyBtn.textContent = 'Copy'; }, 1500); });
+            });
+            return copyBtn;
+          })(),
+          el('a', {
+            href: explorerUrl,
+            target: '_blank',
+            rel: 'noopener noreferrer',
+            class: 'btn btn--secondary',
+            style: 'font-size:12px; text-decoration:none;',
+          }, 'Explorer'),
+        ),
+      );
+
+      wrapper.replaceChild(walletCard, loading);
+    } catch {
+      loading.textContent = 'Could not load wallet.';
+    }
+  })();
+
+  parent.appendChild(wrapper);
 }
 
 function createSettings(parent, { updateDisplayedName }) {

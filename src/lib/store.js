@@ -53,6 +53,9 @@ export const store = {
   // Voice
   voiceRefAudioBlob: null,
   voiceTranscript: null,
+
+  // Twin video (loaded from Supabase agent.video_url)
+  twinVideoUrl: null,
 };
 
 function revokeDraftPhotoUrl() {

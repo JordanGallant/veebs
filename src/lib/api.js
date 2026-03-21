@@ -189,34 +189,7 @@ export async function createAgent(name, description, personality) {
 
   store.agentId = data.id;
 
-  // Create wallets + brain mirror via Agents API (no auth needed)
-  try {
-    const walletResult = await agentsApiFetch('/api/agents/create-wallet', {
-      method: 'POST',
-      body: JSON.stringify({
-        supabase_user_id: store.user.id,
-        agent_id: data.id,
-      }),
-    });
-
-    const solana = walletResult.wallets?.solana?.address || walletResult.agent?.solana_address || null;
-    const evm = walletResult.wallets?.evm?.address || walletResult.agent?.evm_address || null;
-    const localAgentId = walletResult.local_agent_id || walletResult.agent?.local_agent_id || null;
-    store.solanaAddress = solana;
-    store.evmAddress = evm;
-    store.localAgentId = localAgentId;
-
-    // Persist wallet addresses + local_agent_id on Supabase agent row
-    const updates = {};
-    if (solana) updates.solana_address = solana;
-    if (evm) updates.evm_address = evm;
-    if (localAgentId) updates.local_agent_id = localAgentId;
-    if (Object.keys(updates).length > 0) {
-      await supabase.from('agents').update(updates).eq('id', data.id);
-    }
-  } catch (err) {
-    console.warn('Could not create agent wallets:', err.message);
-  }
+  // Wallet creation skipped — not needed for hackathon demo
 
   return data;
 }
