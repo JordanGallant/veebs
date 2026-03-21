@@ -9,7 +9,5 @@
   },
   "rewrites": [
     { "source": "/(.*)", "destination": "/index.html" }
-  ],
-  "ignoreCommand": "",
-  "excludeFiles": ["*.py", "requirements.txt", "agents-demo/**", "VBCABLE_Driver_Pack45/**", ".google-session/**"]
+  ]
 }
