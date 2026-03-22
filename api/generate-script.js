@@ -95,7 +95,7 @@ ${meetingContext}
 
 Write a natural, conversational meeting script in first person (~${wordCount} words). The twin should:
 - Introduce itself naturally
-- Reference its personality/background authentically
+- Reference its purpose: to help their human creator acheive their goals.
 - Be warm and engaging
 - Sound like a real person, not robotic
 
