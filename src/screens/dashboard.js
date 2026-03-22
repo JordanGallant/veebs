@@ -271,27 +271,13 @@ async function render(container) {
         return;
       }
 
-      meetingStatus.textContent = 'Twin is joining the meeting...';
-
-      const res = await fetch('http://127.0.0.1:9999/join-meeting', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ meeting_url: meetingUrl }),
-      });
-
-      const data = await res.json();
-
-      if (!res.ok) {
-        meetingStatus.textContent = data.error || 'Failed to join meeting.';
-        if (data.hint) meetingStatus.textContent += ' ' + data.hint;
-        joinSubmitBtn.removeAttribute('disabled');
-        return;
-      }
+      // Open meeting in new tab
+      window.open(meetingUrl, '_blank');
 
       // Show speak button
       speakBtn.style.display = '';
       joinSubmitBtn.textContent = 'Rejoin';
-      meetingStatus.textContent = 'Twin joined! Click "Speak Now" when ready.';
+      meetingStatus.textContent = 'Select "Unity Video Capture" as camera and "CABLE Output" as mic. Click "Speak Now" when ready.';
     } catch (err) {
       meetingStatus.textContent = err.message || 'Something went wrong.';
     }
