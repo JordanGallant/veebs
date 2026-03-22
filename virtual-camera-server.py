@@ -207,22 +207,9 @@ def stream_loop(vid_path, img_path=None):
             print("[Camera] Using first video frame as idle portrait")
         tmp_cap.release()
 
-    # Load demo.mp3 as audio
-    demo_mp3 = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'api', 'demo.mp3')
-    # Convert demo.mp3 to wav first
-    demo_wav = demo_mp3 + '.wav'
-    if not os.path.exists(demo_wav):
-        try:
-            ffmpeg = "ffmpeg"
-            for p in [os.path.expanduser("~/Desktop/ffmpeg/bin/ffmpeg.exe"), r"C:\ffmpeg\bin\ffmpeg.exe", "ffmpeg"]:
-                if os.path.exists(p):
-                    ffmpeg = p
-                    break
-            subprocess.run([ffmpeg, "-i", demo_mp3, "-acodec", "pcm_s16le", "-ar", "48000", "-ac", "1", demo_wav, "-y"],
-                           capture_output=True, timeout=30)
-        except Exception as e:
-            print(f"[Audio] Failed to convert demo.mp3: {e}")
-    load_audio(vid_path, demo_wav)
+    # Load pre-extracted audio from video.mp4
+    vid_audio = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'api', 'video-audio.wav')
+    load_audio(vid_path, vid_audio)
 
     print(f"[Camera] Starting virtual camera: {width}x{height} @ {fps:.0f}fps")
 
@@ -280,6 +267,124 @@ def stream_loop(vid_path, img_path=None):
         current_status["streaming"] = False
         current_status["mode"] = "off"
         print("[Camera] Stopped")
+
+
+meet_browser = None
+
+def join_meeting_with_playwright(meeting_url):
+    """Join a Google Meet with virtual camera + mic using Playwright."""
+    global meet_browser
+
+    session_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), '.google-session')
+    if not os.path.exists(session_dir):
+        print("[Meet] No Google session. Run: python google-login.py")
+        return
+
+    try:
+        from playwright.sync_api import sync_playwright
+
+        print(f"[Meet] Joining {meeting_url}...")
+
+        pw = sync_playwright().start()
+        browser = pw.chromium.launch_persistent_context(
+            session_dir,
+            headless=False,
+            args=[
+                '--disable-blink-features=AutomationControlled',
+                '--use-fake-ui-for-media-stream',  # auto-grant camera/mic
+            ],
+            permissions=['camera', 'microphone'],
+            ignore_default_args=['--mute-audio'],
+        )
+        meet_browser = browser
+
+        page = browser.new_page()
+        page.goto(meeting_url, wait_until='networkidle', timeout=20000)
+        print("[Meet] Page loaded")
+
+        # Dismiss any popups
+        time.sleep(2)
+        try:
+            page.locator('button:has-text("Dismiss")').first.click(timeout=2000)
+        except:
+            pass
+        try:
+            page.locator('button:has-text("Got it")').first.click(timeout=2000)
+        except:
+            pass
+
+        # Turn off mic and camera initially (we control them via virtual devices)
+        time.sleep(1)
+        try:
+            # Mic toggle
+            mic_btn = page.locator('[data-is-muted="false"][aria-label*="microphone" i]').first
+            mic_btn.click(timeout=2000)
+            print("[Meet] Muted mic")
+        except:
+            pass
+
+        try:
+            # Camera toggle
+            cam_btn = page.locator('[data-is-muted="false"][aria-label*="camera" i]').first
+            cam_btn.click(timeout=2000)
+            print("[Meet] Turned off camera")
+        except:
+            pass
+
+        # Click "Join now" or "Ask to join"
+        time.sleep(1)
+        joined = False
+        for text in ['Join now', 'Ask to join', 'Switch here']:
+            try:
+                btn = page.locator(f'button:has-text("{text}")').first
+                btn.click(timeout=3000)
+                print(f"[Meet] Clicked '{text}'")
+                joined = True
+                break
+            except:
+                continue
+
+        if not joined:
+            # Try any primary action button
+            try:
+                page.locator('[jsname="Qx7uuf"]').first.click(timeout=3000)
+                print("[Meet] Clicked join button (jsname)")
+                joined = True
+            except:
+                print("[Meet] Could not find join button")
+
+        if joined:
+            print("[Meet] Twin is in the meeting!")
+            print("[Meet] POST /play to make the twin speak")
+
+            # Now unmute mic (VB-CABLE) and enable camera (Unity Capture)
+            time.sleep(2)
+            try:
+                mic_btn = page.locator('[data-is-muted="true"][aria-label*="microphone" i]').first
+                mic_btn.click(timeout=2000)
+                print("[Meet] Unmuted mic (VB-CABLE)")
+            except:
+                pass
+
+            try:
+                cam_btn = page.locator('[data-is-muted="true"][aria-label*="camera" i]').first
+                cam_btn.click(timeout=2000)
+                print("[Meet] Turned on camera (Unity Capture)")
+            except:
+                pass
+
+        # Keep browser open until stop
+        while not stop_event.is_set():
+            time.sleep(1)
+
+        browser.close()
+        pw.stop()
+        meet_browser = None
+
+    except Exception as e:
+        print(f"[Meet] Error: {e}")
+        import traceback
+        traceback.print_exc()
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -389,6 +494,39 @@ class Handler(BaseHTTPRequestHandler):
                     })
                     return
             self._json(504, {"error": "Timed out waiting for meeting to be created"})
+            return
+
+        if path == "/join-meeting":
+            length = int(self.headers.get("Content-Length", 0))
+            body = json.loads(self.rfile.read(length)) if length > 0 else {}
+            meeting_url = body.get("meeting_url")
+
+            if not meeting_url:
+                self._json(400, {"error": "meeting_url required"})
+                return
+
+            # Start camera if not already running
+            if not camera_thread or not camera_thread.is_alive():
+                vid_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'api', 'video.mp4')
+                if os.path.exists(vid_file):
+                    stop_event_copy = threading.Event()
+                    play_event_copy = threading.Event()
+                    global stop_event, play_event, camera_thread
+                    stop_event = stop_event_copy
+                    play_event = play_event_copy
+                    camera_thread = threading.Thread(target=stream_loop, args=(vid_file, None), daemon=True)
+                    camera_thread.start()
+                    time.sleep(2)
+
+            # Join meeting in background
+            threading.Thread(target=join_meeting_with_playwright, args=(meeting_url,), daemon=True).start()
+            time.sleep(3)
+
+            self._json(200, {
+                "success": True,
+                "meeting_url": meeting_url,
+                "hint": "Twin is joining the meeting. Click 'Speak Now' when ready.",
+            })
             return
 
         if path == "/stop":

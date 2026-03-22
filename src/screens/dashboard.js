@@ -94,8 +94,8 @@ async function render(container) {
   const meetingInput = el('input', {
     class: 'input',
     type: 'url',
-    placeholder: 'Paste meeting link (Google Meet, Zoom...)',
-    style: 'width:100%; margin-bottom:8px;',
+    value: 'https://meet.google.com/bhw-chpz-xiy',
+    style: 'width:100%; margin-bottom:8px; display:none;',
   });
 
   const scriptLabel = el('div', { style: 'display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;' },
@@ -179,7 +179,7 @@ async function render(container) {
     class: 'btn btn--secondary',
     type: 'button',
     style: 'width:100%; margin-bottom:8px;',
-  }, 'Join with Link');
+  }, 'Join Meeting');
 
   const speakBtn = el('button', {
     class: 'btn btn--secondary',
@@ -271,30 +271,27 @@ async function render(container) {
         return;
       }
 
-      meetingStatus.textContent = 'Starting virtual camera...';
+      meetingStatus.textContent = 'Twin is joining the meeting...';
 
-      const res = await fetch('/api/start-camera', {
+      const res = await fetch('http://127.0.0.1:9999/join-meeting', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ meetingUrl }),
+        body: JSON.stringify({ meeting_url: meetingUrl }),
       });
 
       const data = await res.json();
 
       if (!res.ok) {
-        meetingStatus.textContent = data.error || 'Failed to start camera.';
+        meetingStatus.textContent = data.error || 'Failed to join meeting.';
         if (data.hint) meetingStatus.textContent += ' ' + data.hint;
         joinSubmitBtn.removeAttribute('disabled');
         return;
       }
 
-      // Open meeting in new tab
-      window.open(data.meeting_url, '_blank');
-
       // Show speak button
       speakBtn.style.display = '';
       joinSubmitBtn.textContent = 'Rejoin';
-      meetingStatus.textContent = 'Select "OBS Virtual Camera" in meeting. Click "Speak Now" when ready.';
+      meetingStatus.textContent = 'Twin joined! Click "Speak Now" when ready.';
     } catch (err) {
       meetingStatus.textContent = err.message || 'Something went wrong.';
     }

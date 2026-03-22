@@ -1,0 +1,22 @@
+{
+  "permissions": {
+    "allow": [
+      "WebSearch",
+      "WebFetch(domain:qwen.ai)",
+      "WebFetch(domain:docs.tempo.xyz)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:docs.stripe.com)",
+      "WebFetch(domain:www.npmjs.com)",
+      "WebFetch(domain:tempo.xyz)",
+      "WebFetch(domain:www.x402.org)",
+      "Read(//tmp/mpp-sdk/demo/app/src/**)",
+      "WebFetch(domain:mpp.dev)",
+      "WebFetch(domain:paymentauth.org)",
+      "WebFetch(domain:docs.immersve.com)",
+      "WebFetch(domain:docs.crossmint.com)",
+      "WebFetch(domain:www.privacy.com)",
+      "WebFetch(domain:blockeden.xyz)"
+    ]
+  }
+}
