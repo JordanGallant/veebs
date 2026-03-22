@@ -94,7 +94,7 @@ async function render(container) {
   const meetingInput = el('input', {
     class: 'input',
     type: 'url',
-    placeholder: 'Paste meeting link...',
+    value: 'https://meet.google.com/frf-qrzb-tdi',
     style: 'width:100%; margin-bottom:8px;',
   });
 
