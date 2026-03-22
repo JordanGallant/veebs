@@ -94,8 +94,8 @@ async function render(container) {
   const meetingInput = el('input', {
     class: 'input',
     type: 'url',
-    value: 'https://meet.google.com/bhw-chpz-xiy',
-    style: 'width:100%; margin-bottom:8px; display:none;',
+    placeholder: 'Paste meeting link...',
+    style: 'width:100%; margin-bottom:8px;',
   });
 
   const scriptLabel = el('div', { style: 'display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;' },
