@@ -65,10 +65,10 @@ export function createAudioRecorder(stream) {
 
 function getSupportedMimes() {
   const types = [
+    'audio/mp4',
+    'audio/ogg;codecs=opus',
     'audio/webm;codecs=opus',
     'audio/webm',
-    'audio/ogg;codecs=opus',
-    'audio/mp4',
   ];
   return types.filter((t) => MediaRecorder.isTypeSupported(t));
 }
