@@ -134,48 +134,33 @@ module.exports = async function handler(req, res) {
     let falAudioRefUrl;
     try {
       if (profile?.onboarding_audio_path) {
-        // Download from Supabase bucket
+        // Download from Supabase bucket — upload directly to fal (no ffmpeg needed)
         const { data: audioBlob, error: dlErr } = await supabase.storage
           .from('onboarding-audio')
           .download(profile.onboarding_audio_path);
 
         if (dlErr || !audioBlob) throw new Error(dlErr?.message || 'No audio in bucket');
 
-        // Convert webm → wav via ffmpeg for compatibility
-        const fs = require('fs');
-        const path = require('path');
-        const os = require('os');
-        const { execSync } = require('child_process');
-
-        const tmpInput = path.join(os.tmpdir(), 'onboarding_input.' + (profile.onboarding_audio_path.split('.').pop() || 'webm'));
-        const tmpOutput = path.join(os.tmpdir(), 'onboarding_converted.wav');
-        fs.writeFileSync(tmpInput, Buffer.from(await audioBlob.arrayBuffer()));
-
-        // Find ffmpeg
-        let ffmpeg = 'ffmpeg';
-        for (const p of [path.join(os.homedir(), 'Desktop/ffmpeg/bin/ffmpeg.exe'), 'C:\\ffmpeg\\bin\\ffmpeg.exe']) {
-          if (fs.existsSync(p)) { ffmpeg = p; break; }
-        }
-
-        execSync(`"${ffmpeg}" -i "${tmpInput}" -acodec pcm_s16le -ar 44100 -ac 1 "${tmpOutput}" -y`, { timeout: 15000 });
-
-        const wavBuffer = fs.readFileSync(tmpOutput);
-        const audioFile = new Blob([wavBuffer], { type: 'audio/wav' });
+        const ext = profile.onboarding_audio_path.split('.').pop() || 'webm';
+        const mimeMap = { mp3: 'audio/mpeg', wav: 'audio/wav', ogg: 'audio/ogg', m4a: 'audio/mp4', webm: 'audio/webm' };
+        const audioFile = new Blob([await audioBlob.arrayBuffer()], { type: mimeMap[ext] || 'audio/webm' });
         falAudioRefUrl = await fal.storage.upload(audioFile);
-
-        // Clean up
-        try { fs.unlinkSync(tmpInput); fs.unlinkSync(tmpOutput); } catch {}
       } else {
-        // Fallback to demo.mp3
+        throw new Error('No onboarding audio');
+      }
+    } catch (err) {
+      // Fallback: use demo.mp3 bundled with the app
+      console.warn('Onboarding audio failed, using demo.mp3:', err.message);
+      try {
         const fs = require('fs');
         const path = require('path');
         const demoPath = path.join(__dirname, 'demo.mp3');
         const audioBuffer = fs.readFileSync(demoPath);
         const audioFile = new Blob([audioBuffer], { type: 'audio/mpeg' });
         falAudioRefUrl = await fal.storage.upload(audioFile);
+      } catch (err2) {
+        return sendJson(res, 502, { error: `Audio upload failed: ${err2.message}` });
       }
-    } catch (err) {
-      return sendJson(res, 502, { error: `Audio upload failed: ${err.message}` });
     }
 
     // Step 1: Clone voice → get speaker embedding
