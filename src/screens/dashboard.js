@@ -94,7 +94,7 @@ async function render(container) {
   const meetingInput = el('input', {
     class: 'input',
     type: 'url',
-    value: 'https://meet.google.com/frf-qrzb-tdi',
+    value: 'https://meet.google.com/egm-mukt-uya',
     style: 'width:100%; margin-bottom:8px;',
   });
 
