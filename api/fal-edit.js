@@ -1,10 +1,9 @@
 const EDIT_MODEL_ID = 'fal-ai/flux-2/flash/edit';
-const REMOVE_BG_MODEL_ID = 'fal-ai/imageutils/rembg';
 const { persistExternalProfileImage } = require('./profile-image-storage.js');
 const { HttpError, requireAuthenticatedUser } = require('./request-auth.js');
 
 const CYBORG_PROMPT =
-  'make this person into a beautiful yet terrifying cyborg, shiny sharp silver parts. face and demeanor stay perfectly intact. looking directly into the camera, in an intense and charming way. match clothing and style of input image. ensure face of main subject on input stays the same in output. remove the background. ensure the face stays the same as refrence image.';
+  'make this person into a beautiful yet terrifying cyborg, shiny sharp silver parts. face and demeanor stay perfectly intact. looking directly into the camera, in an intense and charming way. match clothing and style of input image. ensure face of main subject on input stays the same in output. use a light purple lavender gradient background. ensure the face stays the same as reference image.';
 
 function sendJson(res, status, data) {
   res.statusCode = status;
@@ -120,24 +119,9 @@ module.exports = async function handler(req, res) {
     return sendJson(res, 502, { error: 'Fal API response missing output image URL.' });
   }
 
-  let removeBgResult;
-  try {
-    removeBgResult = await fal.subscribe(REMOVE_BG_MODEL_ID, {
-      input: {
-        image_url: editedImageUrl,
-      },
-    });
-  } catch (err) {
-    return sendJson(res, 502, { error: `Background removal failed: ${extractError(err)}` });
-  }
-
-  const falImageUrl =
-    removeBgResult?.data?.image?.url ||
-    removeBgResult?.data?.image ||
-    removeBgResult?.data?.images?.[0]?.url ||
-    null;
+  const falImageUrl = editedImageUrl;
   if (!falImageUrl) {
-    return sendJson(res, 502, { error: 'Fal background-removal response missing output image URL.' });
+    return sendJson(res, 502, { error: 'Fal edit response missing output image URL.' });
   }
 
   try {

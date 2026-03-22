@@ -556,17 +556,9 @@ async function render(container) {
 function createWelcomeTab(parent) {
   const wrapper = el('div', { class: 'welcome-tab', style: 'padding:16px;' });
 
-  const video = el('video', {
-    style: 'width:100%; border-radius:12px; background:#000;',
-    controls: '',
-    autoplay: '',
-    playsinline: '',
-  });
-
   const loading = el('p', { class: 'secondary', style: 'text-align:center; padding:32px 0;' }, 'Loading twin video...');
   wrapper.appendChild(loading);
 
-  // Load video from Supabase
   (async () => {
     try {
       const { supabase } = await import('../lib/supabase.js');
@@ -577,13 +569,12 @@ function createWelcomeTab(parent) {
         .single();
 
       if (data?.video_url) {
-        video.src = data.video_url;
-        wrapper.replaceChild(video, loading);
+        const player = buildVideoPlayer(data.video_url);
+        wrapper.replaceChild(player, loading);
       } else {
         loading.textContent = 'No video yet. Complete onboarding to generate your twin video.';
       }
 
-      // Show personality below video
       if (data?.personality) {
         const soulText = data.personality
           .replace(/^#+\s.*/gm, '')
@@ -599,12 +590,171 @@ function createWelcomeTab(parent) {
           wrapper.appendChild(soulSection);
         }
       }
-    } catch (err) {
+    } catch {
       loading.textContent = 'Could not load video.';
     }
   })();
 
   parent.appendChild(wrapper);
+}
+
+function fmtTime(sec) {
+  const m = Math.floor(sec / 60).toString().padStart(2, '0');
+  const s = Math.floor(sec % 60).toString().padStart(2, '0');
+  return `${m}:${s}`;
+}
+
+function svgIcon(pathD, viewBox = '0 0 24 24') {
+  const ns = 'http://www.w3.org/2000/svg';
+  const svg = document.createElementNS(ns, 'svg');
+  svg.setAttribute('viewBox', viewBox);
+  svg.setAttribute('aria-hidden', 'true');
+  const path = document.createElementNS(ns, 'path');
+  path.setAttribute('d', pathD);
+  svg.appendChild(path);
+  return svg;
+}
+
+const ICON_PLAY = 'M8 5v14l11-7z';
+const ICON_PAUSE = 'M6 19h4V5H6v14zm8-14v14h4V5h-4z';
+const ICON_VOL_ON = 'M3 9v6h4l5 5V4L7 9H3zm13.5 3A4.5 4.5 0 0 0 14 8.3v7.4a4.5 4.5 0 0 0 2.5-3.7zM14 3.2v2.1a7 7 0 0 1 0 13.4v2.1A9 9 0 0 0 14 3.2z';
+const ICON_VOL_OFF = 'M16.5 12A4.5 4.5 0 0 0 14 8.3v1.5l2.4 2.4c.1-.4.1-.8.1-1.2zm2.5 0a7 7 0 0 1-.6 2.8l1.5 1.5A9 9 0 0 0 21 12a9 9 0 0 0-7-8.8v2.1a7 7 0 0 1 5 6.7zM4.3 3 3 4.3 7.7 9H3v6h4l5 5v-6.7l4.2 4.2c-.7.5-1.4.9-2.2 1.2v2.1a9 9 0 0 0 3.6-1.8l2.1 2.1L21 20.3l-1-1-4.6-4.6L12 11.4 4.3 3zM12 4l-2.1 2.1L12 8.3V4z';
+const ICON_FS = 'M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z';
+
+function buildVideoPlayer(src) {
+  const video = el('video', { playsinline: '', preload: 'metadata' });
+  video.src = src;
+
+  const playIcon = el('div', { class: 'vp-play-icon' });
+  playIcon.appendChild(svgIcon(ICON_PLAY));
+  const overlay = el('div', { class: 'vp-overlay' }, playIcon);
+
+  const playBtn = el('button', { class: 'vp-btn vp-btn--play', type: 'button', 'aria-label': 'Play' });
+  playBtn.appendChild(svgIcon(ICON_PLAY));
+
+  const timeEl = el('span', { class: 'vp-time' }, '00:00 / 00:00');
+  const progressFill = el('div', { class: 'vp-progress-fill' });
+  const progressTrack = el('div', { class: 'vp-progress-track' }, progressFill);
+  const progressBar = el('div', { class: 'vp-progress' }, progressTrack);
+
+  const volBtn = el('button', { class: 'vp-btn vp-btn--vol', type: 'button', 'aria-label': 'Mute' });
+  volBtn.appendChild(svgIcon(ICON_VOL_ON));
+  const volSlider = el('input', {
+    class: 'vp-volume-slider',
+    type: 'range',
+    min: '0',
+    max: '1',
+    step: '0.05',
+    value: '1',
+    'aria-label': 'Volume',
+  });
+  const volTrack = el('div', { class: 'vp-volume-track' }, volSlider);
+  const volGroup = el('div', { class: 'vp-volume' }, volBtn, volTrack);
+
+  const fsBtn = el('button', { class: 'vp-btn vp-btn--fs', type: 'button', 'aria-label': 'Fullscreen' });
+  fsBtn.appendChild(svgIcon(ICON_FS));
+
+  const controls = el('div', { class: 'vp-controls' }, playBtn, timeEl, progressBar, volGroup, fsBtn);
+
+  const spinner = el('div', { class: 'vp-spinner' });
+  const loadingEl = el('div', { class: 'vp-loading' }, spinner);
+
+  const container = el('div', { class: 'vp vp--paused' }, video, overlay, loadingEl, controls);
+
+  function togglePlay() {
+    if (video.paused || video.ended) {
+      video.play();
+    } else {
+      video.pause();
+    }
+  }
+
+  function syncPlayState() {
+    const paused = video.paused || video.ended;
+    container.classList.toggle('vp--paused', paused);
+    playBtn.innerHTML = '';
+    playBtn.appendChild(svgIcon(paused ? ICON_PLAY : ICON_PAUSE));
+    playBtn.setAttribute('aria-label', paused ? 'Play' : 'Pause');
+    playIcon.innerHTML = '';
+    playIcon.appendChild(svgIcon(paused ? ICON_PLAY : ICON_PAUSE));
+  }
+
+  function syncProgress() {
+    if (!video.duration) return;
+    const pct = (video.currentTime / video.duration) * 100;
+    progressFill.style.width = `${pct}%`;
+    timeEl.textContent = `${fmtTime(video.currentTime)} / ${fmtTime(video.duration)}`;
+  }
+
+  function syncVolume() {
+    volBtn.innerHTML = '';
+    volBtn.appendChild(svgIcon(video.muted || video.volume === 0 ? ICON_VOL_OFF : ICON_VOL_ON));
+    volSlider.value = video.muted ? 0 : video.volume;
+  }
+
+  on(overlay, 'click', togglePlay);
+  on(playBtn, 'click', togglePlay);
+
+  on(video, 'play', syncPlayState);
+  on(video, 'pause', syncPlayState);
+  on(video, 'ended', syncPlayState);
+  on(video, 'timeupdate', syncProgress);
+  on(video, 'loadedmetadata', () => {
+    syncProgress();
+    loadingEl.hidden = true;
+  });
+  on(video, 'waiting', () => { loadingEl.hidden = false; });
+  on(video, 'canplay', () => { loadingEl.hidden = true; });
+
+  let scrubbing = false;
+  function seekFromEvent(e) {
+    const rect = progressBar.getBoundingClientRect();
+    const pct = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+    video.currentTime = pct * (video.duration || 0);
+    syncProgress();
+  }
+
+  on(progressBar, 'pointerdown', (e) => {
+    scrubbing = true;
+    container.classList.add('vp--scrubbing');
+    progressBar.setPointerCapture(e.pointerId);
+    seekFromEvent(e);
+  });
+  on(progressBar, 'pointermove', (e) => { if (scrubbing) seekFromEvent(e); });
+  on(progressBar, 'pointerup', () => {
+    scrubbing = false;
+    container.classList.remove('vp--scrubbing');
+  });
+
+  on(volBtn, 'click', () => {
+    video.muted = !video.muted;
+    syncVolume();
+  });
+  on(volSlider, 'input', () => {
+    video.volume = parseFloat(volSlider.value);
+    video.muted = video.volume === 0;
+    syncVolume();
+  });
+
+  on(fsBtn, 'click', () => {
+    if (document.fullscreenElement) {
+      document.exitFullscreen();
+    } else {
+      container.requestFullscreen().catch(() => {});
+    }
+  });
+
+  on(video, 'dblclick', () => {
+    if (document.fullscreenElement) {
+      document.exitFullscreen();
+    } else {
+      container.requestFullscreen().catch(() => {});
+    }
+  });
+
+  video.autoplay = true;
+
+  return container;
 }
 
 function createSolanaWalletTab(parent) {
