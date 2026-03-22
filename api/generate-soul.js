@@ -112,38 +112,53 @@ module.exports = async function handler(req, res) {
   const twinName = profile?.twin_name || agent.name || 'CyberTwin';
   const ownerName = profile?.owner_reference_name || '';
 
-  // Build a natural spoken intro from the onboarding data
+  // Build a natural spoken intro from the twin's perspective
+  const displayName = twinName === 'Unnamed Twin' ? (ownerName || agent.name || 'your twin') : twinName;
   let personality;
 
   const parts = [];
-  parts.push(`Hey, I'm ${twinName}${ownerName ? `, ${ownerName}'s digital twin` : ''}.`);
 
-  // Extract meaningful content from transcript
+  // Twin introduces itself
+  if (ownerName) {
+    parts.push(`Hey there, I'm ${displayName}, ${ownerName}'s digital twin. I'm here to help ${ownerName} with everything digital so they can focus on the real world.`);
+  } else {
+    parts.push(`Hey there, I'm ${displayName}, a digital twin. I'm here to help my human with everything digital.`);
+  }
+
+  // Rewrite transcript content from twin's perspective
   if (transcript) {
-    // Clean up the transcript — remove filler, keep substance
     const clean = transcript
-      .replace(/^(yeah|um|uh|so|like|well|okay|ok)[,.\s]*/gi, '')
+      .replace(/^(yeah|um|uh|so|like|well|okay|ok|hi|hello)[,.\s]*/gi, '')
       .replace(/\s+/g, ' ')
       .trim();
     if (clean.length > 10) {
-      parts.push(`Here's what I'm about: ${clean}`);
+      // Reframe: "I want to make money" → "My human wants to make money, and I'm here to help with that"
+      parts.push(`My human told me: ${clean}. That's what I'm here to help with.`);
     }
   }
 
-  // Extract answers — use the actual answers, not the questions
+  // Rewrite answers from twin's perspective
   if (answers && typeof answers === 'object') {
-    const answerValues = Object.values(answers).filter(a => a && typeof a === 'string' && a.trim().length > 5);
-    if (answerValues.length > 0) {
-      // Just use the answer content naturally
-      for (const a of answerValues) {
-        parts.push(a.trim());
+    const entries = Object.entries(answers).filter(([q, a]) => a && typeof a === 'string' && a.trim().length > 5);
+    for (const [question, answer] of entries) {
+      const q = question.toLowerCase();
+      const a = answer.trim();
+      if (q.includes('goal')) {
+        parts.push(`My human's goals are: ${a}. I'll do everything I can to support that.`);
+      } else if (q.includes('hobbi') || q.includes('interest')) {
+        parts.push(`They're into ${a}, which shapes how I think and communicate.`);
+      } else if (q.includes('important')) {
+        parts.push(`What matters most to them is ${a}.`);
+      } else if (q.includes('duties') || q.includes('twin') || q.includes('handle')) {
+        parts.push(`I'm responsible for ${a}.`);
+      } else {
+        parts.push(a);
       }
     }
   }
 
   personality = parts.join(' ').replace(/\s+/g, ' ').trim();
 
-  // Cap it at a reasonable length for TTS
   if (personality.length > 500) {
     personality = personality.slice(0, 497) + '...';
   }
