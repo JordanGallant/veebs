@@ -199,22 +199,11 @@ async function render(container) {
       const token = authSession?.access_token;
 
       if (store.agentId && token) {
-        // Build a script from personality or use default intro
-        let script;
+        // Use the personality as the script — it's already a natural spoken intro
         const personality = store.characterProfile || '';
-        // Strip markdown headers/formatting for speech
-        const cleanPersonality = personality
-          .replace(/^#+\s.*/gm, '')
-          .replace(/\*\*/g, '')
-          .replace(/[#*_~`]/g, '')
-          .replace(/\n{2,}/g, ' ')
-          .trim();
-
-        if (cleanPersonality.length > 50) {
-          script = `Hello, I am ${store.name || 'your CyberTwin'}. ${cleanPersonality.slice(0, 400)}`;
-        } else {
-          script = `Hello everyone, I am ${store.name || 'your CyberTwin'}, a digital replica created to represent my human. Nice to meet you all!`;
-        }
+        const script = personality.length > 20
+          ? personality.slice(0, 500)
+          : `Hey, I'm ${store.name || 'your CyberTwin'}. I'm a digital twin, here to represent my human. Nice to meet you!`;
 
         status.textContent = 'Generating lip-synced video... (this takes ~60s)';
 

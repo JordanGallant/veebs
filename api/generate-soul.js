@@ -112,25 +112,40 @@ module.exports = async function handler(req, res) {
   const twinName = profile?.twin_name || agent.name || 'CyberTwin';
   const ownerName = profile?.owner_reference_name || '';
 
-  // Build a casual, conversational personality — like the twin is introducing itself
-  const context = [];
-  if (transcript) context.push(`Voice recording transcript: "${transcript}"`);
-  if (answers && typeof answers === 'object') {
-    for (const [q, a] of Object.entries(answers)) {
-      if (a) context.push(`${q}: ${a}`);
-    }
-  }
-  if (existingProfile) context.push(`Profile notes: ${existingProfile}`);
-
+  // Build a natural spoken intro from the onboarding data
   let personality;
 
-  if (context.length > 0) {
-    // Build a natural intro from the data
-    const intro = `Hey, I'm ${twinName}${ownerName ? `, I'm here to help ${ownerName}` : ''}.`;
-    const details = context.join('. ').replace(/\n/g, ' ').trim();
-    personality = `${intro} ${details}`;
-  } else {
-    personality = `Hey, I'm ${twinName}${ownerName ? `, here to help ${ownerName}` : ''}. I'm a digital twin, ready to represent my human and get things done.`;
+  const parts = [];
+  parts.push(`Hey, I'm ${twinName}${ownerName ? `, ${ownerName}'s digital twin` : ''}.`);
+
+  // Extract meaningful content from transcript
+  if (transcript) {
+    // Clean up the transcript — remove filler, keep substance
+    const clean = transcript
+      .replace(/^(yeah|um|uh|so|like|well|okay|ok)[,.\s]*/gi, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+    if (clean.length > 10) {
+      parts.push(`Here's what I'm about: ${clean}`);
+    }
+  }
+
+  // Extract answers — use the actual answers, not the questions
+  if (answers && typeof answers === 'object') {
+    const answerValues = Object.values(answers).filter(a => a && typeof a === 'string' && a.trim().length > 5);
+    if (answerValues.length > 0) {
+      // Just use the answer content naturally
+      for (const a of answerValues) {
+        parts.push(a.trim());
+      }
+    }
+  }
+
+  personality = parts.join(' ').replace(/\s+/g, ' ').trim();
+
+  // Cap it at a reasonable length for TTS
+  if (personality.length > 500) {
+    personality = personality.slice(0, 497) + '...';
   }
 
   // Save personality to agent
